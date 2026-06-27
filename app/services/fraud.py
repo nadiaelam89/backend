@@ -191,6 +191,13 @@ async def assert_order_ip_allowed(
 ) -> FraudDecision:
     decision = await check_order_ip_fraud(order_data, phone_result, client_ip)
     if decision.allowed:
+        logger.info(
+            "Allowed order by MaxMind fraud check: reason=%s risk_score=%s country=%s ip=%s",
+            decision.reason,
+            decision.risk_score,
+            decision.country_code,
+            client_ip,
+        )
         return decision
 
     logger.warning(
