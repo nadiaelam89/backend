@@ -47,6 +47,13 @@ def _get_client_ip(request: Request) -> str | None:
     return None
 
 
+def _get_client_country(request: Request) -> str | None:
+    cloudflare_country = request.headers.get("CF-IPCountry")
+    if cloudflare_country and cloudflare_country not in {"XX", "T1"}:
+        return cloudflare_country.strip().upper()
+    return None
+
+
 @router.post("", response_model=CreateOrderResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_order_endpoint(
@@ -55,8 +62,9 @@ async def create_order_endpoint(
     db: AsyncSession = Depends(get_db),
 ) -> CreateOrderResponse:
     client_ip = _get_client_ip(request)
+    client_country = _get_client_country(request)
 
-    order = await create_order(db, order_data, client_ip)
+    order = await create_order(db, order_data, client_ip, client_country)
 
     # Determine upsell offer
     product_ids = [item.product_id for item in order.items]

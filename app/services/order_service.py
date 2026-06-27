@@ -60,6 +60,7 @@ async def create_order(
     db: AsyncSession,
     order_data: CreateOrderRequest,
     client_ip: str | None,
+    client_country: str | None = None,
 ) -> Order:
     """Validate, persist, and asynchronously dispatch side effects for a new order."""
 
@@ -86,9 +87,9 @@ async def create_order(
                 ),
             )
 
-    # 3. Optional IP fraud screening. This runs before persistence and fails open
-    # on provider outages, but blocks clear high-risk/non-allowed-country results.
-    await assert_order_ip_allowed(order_data, phone_result, client_ip)
+    # 3. Optional IP fraud screening. When enabled, it blocks non-KSA/high-risk
+    # requests before persistence unless the phone is explicitly whitelisted.
+    await assert_order_ip_allowed(order_data, phone_result, client_ip, client_country)
 
     # 4. Compute server-side total
     total = calculate_total(order_data.items)

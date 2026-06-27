@@ -123,6 +123,7 @@ async def check_order_ip_fraud(
     order_data: CreateOrderRequest,
     phone_result: PhoneResult,
     client_ip: str | None,
+    client_country: str | None = None,
 ) -> FraudDecision:
     if not settings.ENABLE_IP_FRAUD_CHECK:
         return FraudDecision(allowed=True, reason="disabled")
@@ -130,12 +131,23 @@ async def check_order_ip_fraud(
     if _phone_is_whitelisted(phone_result):
         return FraudDecision(allowed=True, reason="whitelisted_phone")
 
+    if client_country and client_country.upper() != settings.MAXMIND_ALLOWED_COUNTRY.upper():
+        return FraudDecision(
+            allowed=False,
+            reason="non_allowed_cloudflare_country",
+            country_code=client_country,
+        )
+
     if not _is_public_ip(client_ip):
-        return FraudDecision(allowed=True, reason="non_public_or_missing_ip")
+        if client_country and client_country.upper() == settings.MAXMIND_ALLOWED_COUNTRY.upper():
+            return FraudDecision(allowed=True, reason="cloudflare_country_allowed", country_code=client_country)
+        return FraudDecision(allowed=False, reason="non_public_or_missing_ip", country_code=client_country)
 
     if not settings.MAXMIND_ACCOUNT_ID or not settings.MAXMIND_LICENSE_KEY:
         logger.warning("MaxMind fraud check enabled but credentials are missing")
-        return FraudDecision(allowed=True, reason="missing_credentials")
+        if client_country and client_country.upper() == settings.MAXMIND_ALLOWED_COUNTRY.upper():
+            return FraudDecision(allowed=True, reason="cloudflare_country_allowed", country_code=client_country)
+        return FraudDecision(allowed=False, reason="missing_credentials", country_code=client_country)
 
     payload = _build_minfraud_payload(order_data, phone_result, client_ip)
 
@@ -150,8 +162,10 @@ async def check_order_ip_fraud(
             response.raise_for_status()
             body = response.json()
     except Exception as exc:  # noqa: BLE001
-        logger.error("MaxMind fraud check failed open for IP %s: %s", client_ip, exc)
-        return FraudDecision(allowed=True, reason="provider_error")
+        logger.error("MaxMind fraud check failed for IP %s: %s", client_ip, exc)
+        if client_country and client_country.upper() == settings.MAXMIND_ALLOWED_COUNTRY.upper():
+            return FraudDecision(allowed=True, reason="cloudflare_country_allowed", country_code=client_country)
+        return FraudDecision(allowed=False, reason="provider_error", country_code=client_country)
 
     risk_score = body.get("risk_score")
     risk_score_float = float(risk_score) if isinstance(risk_score, (int, float)) else None
@@ -188,11 +202,12 @@ async def assert_order_ip_allowed(
     order_data: CreateOrderRequest,
     phone_result: PhoneResult,
     client_ip: str | None,
+    client_country: str | None = None,
 ) -> FraudDecision:
-    decision = await check_order_ip_fraud(order_data, phone_result, client_ip)
+    decision = await check_order_ip_fraud(order_data, phone_result, client_ip, client_country)
     if decision.allowed:
         logger.info(
-            "Allowed order by MaxMind fraud check: reason=%s risk_score=%s country=%s ip=%s",
+            "Allowed order by fraud check: reason=%s risk_score=%s country=%s ip=%s",
             decision.reason,
             decision.risk_score,
             decision.country_code,
@@ -201,7 +216,7 @@ async def assert_order_ip_allowed(
         return decision
 
     logger.warning(
-        "Blocked order by MaxMind fraud check: reason=%s risk_score=%s country=%s ip=%s",
+        "Blocked order by fraud check: reason=%s risk_score=%s country=%s ip=%s",
         decision.reason,
         decision.risk_score,
         decision.country_code,
