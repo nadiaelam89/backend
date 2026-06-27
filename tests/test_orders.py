@@ -160,6 +160,36 @@ async def test_create_order_tampered_price_rejected() -> None:
     app.dependency_overrides.clear()
 
 
+@pytest.mark.asyncio
+async def test_create_order_fraud_block_returns_403() -> None:
+    """A MaxMind block should reject the order before persistence."""
+    from fastapi import HTTPException
+    from app.db.session import get_db
+    from app.main import app
+
+    async def _override_get_db():
+        yield AsyncMock()
+
+    app.dependency_overrides[get_db] = _override_get_db
+
+    with patch(
+        "app.services.order_service.assert_order_ip_allowed",
+        side_effect=HTTPException(status_code=403, detail="Order rejected by fraud screening."),
+    ):
+        from httpx import ASGITransport, AsyncClient as _AC
+
+        async with _AC(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            payload = valid_order_payload()
+            resp = await ac.post(
+                "/api/orders",
+                json=payload,
+                headers={"X-Forwarded-For": "8.8.8.8"},
+            )
+
+    assert resp.status_code == 403
+    app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # Sheets failure does NOT fail order
 # ---------------------------------------------------------------------------

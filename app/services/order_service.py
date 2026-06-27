@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.db.models import AnalyticsEvent, Order, OrderItem
 from app.schemas.orders import CreateOrderRequest, UpsellRequest
+from app.services.fraud import assert_order_ip_allowed
 from app.services.hashing import sha256_lower
 from app.services.phone import normalize_saudi_phone
 from app.services.pricing import (
@@ -85,13 +86,17 @@ async def create_order(
                 ),
             )
 
-    # 3. Compute server-side total
+    # 3. Optional IP fraud screening. This runs before persistence and fails open
+    # on provider outages, but blocks clear high-risk/non-allowed-country results.
+    await assert_order_ip_allowed(order_data, phone_result, client_ip)
+
+    # 4. Compute server-side total
     total = calculate_total(order_data.items)
 
-    # 4. Generate order number
+    # 5. Generate order number
     order_number = await _generate_order_number(db)
 
-    # 5. Persist order
+    # 6. Persist order
     order = Order(
         id=uuid.uuid4(),
         order_number=order_number,
@@ -115,7 +120,7 @@ async def create_order(
     )
     db.add(order)
 
-    # 6. Persist items
+    # 7. Persist items
     for item in order_data.items:
         db_item = OrderItem(
             id=uuid.uuid4(),
@@ -136,7 +141,7 @@ async def create_order(
 
     logger.info("Order %s persisted (total %d SAR)", order_number, total)
 
-    # 7. Background side effects: Sheets + CAPI (must not raise)
+    # 8. Background side effects: Sheets + CAPI (must not raise)
     await _dispatch_side_effects(db, order, phone_hash)
 
     return order

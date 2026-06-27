@@ -14,6 +14,7 @@ from slowapi.util import get_remote_address
 from app.api.routes import health, orders
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.db.models import Base
 from app.db.session import engine
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging()
     logger.info("Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
     logger.info("CORS allowed origins: %s", settings.allowed_origins)
+
+    # Local development on SQLite: create tables automatically (no migrations).
+    # Production (PostgreSQL) continues to use Alembic migrations.
+    if settings.DATABASE_URL.startswith("sqlite"):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("SQLite tables ensured (local development)")
 
     # Verify DB connectivity on startup
     try:

@@ -29,6 +29,13 @@ class Settings(BaseSettings):
 
     HASH_SALT: str = ""
 
+    MAXMIND_ACCOUNT_ID: str = ""
+    MAXMIND_LICENSE_KEY: str = ""
+    ENABLE_IP_FRAUD_CHECK: bool = False
+    MAXMIND_RISK_SCORE_THRESHOLD: float = 25.0
+    MAXMIND_ALLOWED_COUNTRY: str = "SA"
+    WHITELISTED_PHONES: str = ""
+
     @field_validator("APP_ENV")
     @classmethod
     def validate_env(cls, v: str) -> str:
@@ -52,6 +59,10 @@ class Settings(BaseSettings):
                 "http://127.0.0.1:3000",
             ]
         return origins
+
+    @property
+    def whitelisted_phones(self) -> set[str]:
+        return {phone.strip() for phone in self.WHITELISTED_PHONES.split(",") if phone.strip()}
 
 
 @lru_cache

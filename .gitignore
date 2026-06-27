@@ -28,6 +28,11 @@ dist/
 .coverage
 htmlcov/
 
+# Local SQLite development database
+*.db
+*.sqlite
+*.sqlite3
+
 # Misc
 *.log
 .DS_Store

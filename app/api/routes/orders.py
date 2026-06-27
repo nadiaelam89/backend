@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Body, Depends, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +41,7 @@ def _get_client_ip(request: Request) -> str | None:
 @limiter.limit("10/minute")
 async def create_order_endpoint(
     request: Request,
-    order_data: CreateOrderRequest,
+    order_data: Annotated[CreateOrderRequest, Body()],
     db: AsyncSession = Depends(get_db),
 ) -> CreateOrderResponse:
     client_ip = _get_client_ip(request)
@@ -70,7 +71,7 @@ async def create_order_endpoint(
 @router.post("/{order_id}/upsell", response_model=UpsellResponse)
 async def add_upsell_endpoint(
     order_id: str,
-    upsell_data: UpsellRequest,
+    upsell_data: Annotated[UpsellRequest, Body()],
     db: AsyncSession = Depends(get_db),
 ) -> UpsellResponse:
     order = await add_upsell(db, order_id, upsell_data)

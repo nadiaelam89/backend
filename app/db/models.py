@@ -3,9 +3,15 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Text, Uuid, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+# Portable column types: native UUID + JSONB on PostgreSQL (production),
+# and generic UUID/JSON on other backends like SQLite (local development).
+UUIDType = Uuid(as_uuid=True)
+JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Base(DeclarativeBase):
@@ -15,7 +21,7 @@ class Base(DeclarativeBase):
 class Order(Base):
     __tablename__ = "orders"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
     order_number: Mapped[str] = mapped_column(Text, unique=True, nullable=False, index=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="new")
 
@@ -30,7 +36,7 @@ class Order(Base):
     total_sar: Mapped[int] = mapped_column(Integer, nullable=False)
 
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    utm: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    utm: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
     event_id: Mapped[str] = mapped_column(Text, nullable=False)
     fbp: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -40,7 +46,7 @@ class Order(Base):
     client_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     sheet_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    sheet_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    sheet_response: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -63,9 +69,9 @@ class Order(Base):
 class OrderItem(Base):
     __tablename__ = "order_items"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
     order_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True
+        UUIDType, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     product_id: Mapped[str] = mapped_column(Text, nullable=False)
@@ -87,17 +93,17 @@ class OrderItem(Base):
 class AnalyticsEvent(Base):
     __tablename__ = "analytics_events"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
     order_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, index=True
+        UUIDType, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
     event_id: Mapped[str] = mapped_column(Text, nullable=False)
     platform: Mapped[str] = mapped_column(Text, nullable=False)
     event_name: Mapped[str] = mapped_column(Text, nullable=False)
-    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONType, nullable=False)
     response_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    response_body: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    response_body: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
