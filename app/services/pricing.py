@@ -120,16 +120,20 @@ def calculate_total(items: list[OrderItemRequest]) -> int:  # type: ignore[type-
     return sum(item.price_sar for item in items)
 
 
-def get_eligible_upsell(product_ids: list[str]) -> str | None:
-    """Return the upsell product_id to offer, or None if no upsell applies."""
+CATALOG_PRODUCT_ORDER: list[str] = [
+    "magnesium_gummies",
+    "saffron_gummies",
+    "mushroom_coffee",
+]
+
+
+def get_eligible_upsells(product_ids: list[str]) -> list[str]:
+    """Return products not already in the order (1 ordered → 2 upsells, 2 ordered → 1)."""
     unique = {canonical_product_id(pid) for pid in product_ids}
-    if unique == VALID_PRODUCTS:
-        # All 3 products already in cart – skip upsell
-        return None
-    # Use the last (or first) product to determine upsell
-    for pid in reversed(product_ids):
-        canonical = canonical_product_id(pid)
-        candidate = UPSELL_MAP.get(canonical)
-        if candidate and candidate not in unique:
-            return candidate
-    return None
+    return [pid for pid in CATALOG_PRODUCT_ORDER if pid not in unique]
+
+
+def get_eligible_upsell(product_ids: list[str]) -> str | None:
+    """Return the first eligible upsell product, if any."""
+    upsells = get_eligible_upsells(product_ids)
+    return upsells[0] if upsells else None

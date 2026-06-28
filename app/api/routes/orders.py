@@ -22,7 +22,7 @@ from app.services.order_service import (
     run_order_side_effects,
     run_upsell_side_effects,
 )
-from app.services.pricing import UPSELL_PRICE, get_eligible_upsell
+from app.services.pricing import UPSELL_PRICE, get_eligible_upsells
 
 logger = logging.getLogger(__name__)
 
@@ -75,16 +75,18 @@ async def create_order_endpoint(
     await db.commit()
     background_tasks.add_task(run_order_side_effects, order.id)
 
-    # Determine upsell offer
+    # Determine upsell offers (products not already in the order)
     product_ids = [item.product_id for item in order.items]
-    upsell_pid = get_eligible_upsell(product_ids)
-    eligible_upsell: EligibleUpsell | None = None
-    if upsell_pid:
-        eligible_upsell = EligibleUpsell(
-            product_id=upsell_pid,
+    upsell_pids = get_eligible_upsells(product_ids)
+    eligible_upsells = [
+        EligibleUpsell(
+            product_id=pid,
             price_sar=UPSELL_PRICE,
             expires_in_seconds=UPSELL_EXPIRES_SECONDS,
         )
+        for pid in upsell_pids
+    ]
+    eligible_upsell = eligible_upsells[0] if eligible_upsells else None
 
     return CreateOrderResponse(
         ok=True,
@@ -92,6 +94,7 @@ async def create_order_endpoint(
         event_id=order_data.event_id,
         total_sar=order.total_sar,
         eligible_upsell=eligible_upsell,
+        eligible_upsells=eligible_upsells,
     )
 
 

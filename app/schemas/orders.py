@@ -90,6 +90,7 @@ class CreateOrderResponse(BaseModel):
     event_id: UUID
     total_sar: int
     eligible_upsell: EligibleUpsell | None = None
+    eligible_upsells: list[EligibleUpsell] = Field(default_factory=list)
 
 
 class UpsellResponse(BaseModel):

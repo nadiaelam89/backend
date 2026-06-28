@@ -11,6 +11,7 @@ from app.services.pricing import (
     calculate_total,
     canonical_product_id,
     get_eligible_upsell,
+    get_eligible_upsells,
     resolve_bundle_product_ids,
     validate_item_price,
     validate_upsell_price,
@@ -133,31 +134,36 @@ def test_calculate_total_empty() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_upsell_magnesium_gets_saffron() -> None:
+def test_upsell_magnesium_gets_two_others() -> None:
+    result = get_eligible_upsells(["magnesium_gummies"])
+    assert result == ["saffron_gummies", "mushroom_coffee"]
+
+
+def test_upsell_magnesium_first_legacy() -> None:
     result = get_eligible_upsell(["magnesium_gummies"])
     assert result == "saffron_gummies"
 
 
-def test_upsell_saffron_gets_magnesium() -> None:
-    result = get_eligible_upsell(["saffron_gummies"])
-    assert result == "magnesium_gummies"
+def test_upsell_saffron_gets_two_others() -> None:
+    result = get_eligible_upsells(["saffron_gummies"])
+    assert result == ["magnesium_gummies", "mushroom_coffee"]
 
 
-def test_upsell_mushroom_coffee_gets_saffron() -> None:
-    result = get_eligible_upsell(["mushroom_coffee"])
-    assert result == "saffron_gummies"
+def test_upsell_mushroom_coffee_gets_two_others() -> None:
+    result = get_eligible_upsells(["mushroom_coffee"])
+    assert result == ["magnesium_gummies", "saffron_gummies"]
 
 
 def test_upsell_all_three_products_returns_none() -> None:
-    result = get_eligible_upsell(
+    result = get_eligible_upsells(
         ["magnesium_gummies", "saffron_gummies", "mushroom_coffee"]
     )
-    assert result is None
+    assert result == []
 
 
-def test_upsell_already_has_target_skips() -> None:
-    result = get_eligible_upsell(["magnesium_gummies", "saffron_gummies"])
-    assert result is None
+def test_upsell_two_products_returns_one() -> None:
+    result = get_eligible_upsells(["magnesium_gummies", "saffron_gummies"])
+    assert result == ["mushroom_coffee"]
 
 
 def test_valid_products_set() -> None:

@@ -23,7 +23,6 @@ from app.services.pricing import (
     UPSELL_PRICE,
     calculate_total,
     canonical_product_id,
-    get_eligible_upsell,
     resolve_bundle_product_ids,
     validate_item_price,
     validate_upsell_price,
@@ -277,15 +276,16 @@ async def add_upsell(
 
     order = await _get_order_or_404(db, order_id)
 
-    if order.status not in ("new",):
+    if order.status not in ("new", "upsell_added"):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Order {order_id} is not eligible for upsell (status={order.status})",
         )
 
     # Check this product isn't already in the order
-    existing_pids = {item.product_id for item in order.items}
-    if upsell_data.product_id in existing_pids:
+    existing_pids = {canonical_product_id(item.product_id) for item in order.items}
+    upsell_pid = canonical_product_id(upsell_data.product_id)
+    if upsell_pid in existing_pids:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Product '{upsell_data.product_id}' is already in order {order_id}",
@@ -294,10 +294,10 @@ async def add_upsell(
     upsell_item = OrderItem(
         id=uuid.uuid4(),
         order_id=order.id,
-        product_id=upsell_data.product_id,
-        slug=PRODUCT_SLUGS.get(upsell_data.product_id, ""),
-        name_ar=PRODUCT_NAMES_AR[upsell_data.product_id],
-        offer_id=f"{upsell_data.product_id}_upsell",
+        product_id=upsell_pid,
+        slug=PRODUCT_SLUGS.get(upsell_pid, ""),
+        name_ar=PRODUCT_NAMES_AR[upsell_pid],
+        offer_id=f"{upsell_pid}_upsell",
         offer_quantity=1,
         unit_context="post_order_upsell",
         price_sar=upsell_data.price_sar,
