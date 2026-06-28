@@ -100,6 +100,13 @@ def _setup_default_mocks(mock_create: Any, mock_upsell: Any, mock_summary: Any) 
         "status": "new",
         "total_sar": 449,
         "product_names": ["علكة المغنيسيوم جلايسينات 400 ملغ"],
+        "items": [
+            {
+                "name_ar": "علكة المغنيسيوم جلايسينات 400 ملغ",
+                "price_sar": 449,
+                "quantity": 3,
+            }
+        ],
     }
 
 

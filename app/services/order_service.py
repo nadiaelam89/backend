@@ -329,6 +329,14 @@ async def add_upsell(
 async def get_order_summary(db: AsyncSession, order_id: str) -> dict:
     """Return a safe order summary (no PII phone number)."""
     order = await _get_order_or_404(db, order_id)
+    items = [
+        {
+            "name_ar": item.name_ar,
+            "price_sar": item.price_sar,
+            "quantity": item.offer_quantity,
+        }
+        for item in order.items
+    ]
     product_names = [item.name_ar for item in order.items]
     return {
         "ok": True,
@@ -336,6 +344,7 @@ async def get_order_summary(db: AsyncSession, order_id: str) -> dict:
         "status": order.status,
         "total_sar": order.total_sar,
         "product_names": product_names,
+        "items": items,
     }
 
 

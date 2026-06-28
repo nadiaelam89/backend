@@ -99,9 +99,16 @@ class UpsellResponse(BaseModel):
     new_total_sar: int
 
 
+class OrderSummaryItem(BaseModel):
+    name_ar: str
+    price_sar: int
+    quantity: int = 1
+
+
 class OrderSummaryResponse(BaseModel):
     ok: bool = True
     order_id: str
     status: str
     total_sar: int
     product_names: list[str]
+    items: list[OrderSummaryItem] = Field(default_factory=list)
