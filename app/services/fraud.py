@@ -10,6 +10,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
+from app.services.phone import normalize_saudi_phone
 from app.services.pricing import PRODUCT_NAMES_AR
 
 if TYPE_CHECKING:
@@ -40,12 +41,27 @@ def _is_public_ip(ip_value: str | None) -> bool:
 
 
 def _phone_is_whitelisted(phone_result: PhoneResult) -> bool:
-    whitelist = settings.whitelisted_phones
-    return bool(
-        phone_result.phone_e164 in whitelist
-        or phone_result.phone_digits in whitelist
-        or phone_result.phone_local in whitelist
-    )
+    accepted_values = {
+        phone_result.phone_e164,
+        phone_result.phone_digits,
+        phone_result.phone_local,
+    }
+
+    for raw_phone in settings.whitelisted_phones:
+        normalized = normalize_saudi_phone(raw_phone)
+        if normalized.is_valid:
+            whitelist_values = {
+                normalized.phone_e164,
+                normalized.phone_digits,
+                normalized.phone_local,
+            }
+        else:
+            whitelist_values = {raw_phone.strip()}
+
+        if accepted_values & whitelist_values:
+            return True
+
+    return False
 
 
 def _extract_country_code(response_body: dict) -> str | None:

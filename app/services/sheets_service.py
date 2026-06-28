@@ -7,6 +7,7 @@ import httpx
 
 from app.core.config import settings
 from app.db.models import Order
+from app.services.pricing import PRODUCT_SKUS
 
 logger = logging.getLogger(__name__)
 
@@ -44,26 +45,30 @@ async def send_order_to_sheets(order: Order) -> None:
         logger.warning("GOOGLE_SHEETS_WEBHOOK_URL is not configured; skipping Sheets push")
         return
 
+    products = [item.name_ar for item in order.items]
+    skus = [PRODUCT_SKUS.get(item.product_id, "SKU-UNKNOWN") for item in order.items]
+    quantities = [str(item.offer_quantity) for item in order.items]
+    
+    created_date = order.created_at if order.created_at else datetime.now(timezone.utc)
+    date_str = created_date.strftime("%d/%m/%Y")
+    
+    phone = order.phone_e164.replace("+", "") if order.phone_e164 else ""
+
     payload = {
         "secret": settings.GOOGLE_SHEETS_WEBHOOK_SECRET,
         "type": "order_created",
         "order": {
-            "created_at": order.created_at.isoformat() if order.created_at else datetime.now(timezone.utc).isoformat(),
-            "order_id": order.order_number,
-            "status": order.status,
+            "date": date_str,
+            "orderid": order.order_number,
+            "country": "KSA",
             "name": order.customer_name,
-            "phone_local": order.phone_local,
-            "phone_e164": order.phone_e164,
-            "products_text": _build_products_text(order),
-            "items": _build_items_payload(order),
-            "subtotal_sar": order.subtotal_sar,
-            "delivery_fee_sar": order.delivery_fee_sar,
-            "total_sar": order.total_sar,
-            "payment_method": "COD",
-            "source_url": order.source_url or "",
-            "utm": order.utm or {},
-            "event_id": order.event_id,
-            "notes": "",
+            "phone": phone,
+            "product": "/".join(products),
+            "sku": "/".join(skus),
+            "quantity": "/".join(quantities),
+            "totalprice": order.total_sar,
+            "currency": "SAR",
+            "status": ""
         },
     }
 

@@ -39,9 +39,9 @@ logger = logging.getLogger(__name__)
 
 
 async def _generate_order_number(db: AsyncSession) -> str:
-    """Generate SH-YYYYMMDD-NNNNNN order number using today's date and daily count."""
+    """Generate sukoon-YYYYMMDD-NNNNNN order number using today's date and daily count."""
     today = datetime.now(timezone.utc).strftime("%Y%m%d")
-    prefix = f"SH-{today}-"
+    prefix = f"sukoon-{today}-"
 
     count_result = await db.execute(
         select(func.count()).where(Order.order_number.like(f"{prefix}%"))

@@ -11,33 +11,39 @@ if TYPE_CHECKING:
 
 STANDARD_PRICES: dict[int, int] = {
     1: 199,
-    2: 279,
-    3: 349,
+    2: 349,
+    3: 449,
 }
 
-UPSELL_PRICE: int = 99
+UPSELL_PRICE: int = 149
 
 VALID_PRODUCTS: frozenset[str] = frozenset(
-    {"sleep_gummies", "ashwagandha_tea", "focus_coffee"}
+    {"sleep_gummies", "saffron_gummies", "focus_coffee"}
 )
 
 PRODUCT_NAMES_AR: dict[str, str] = {
-    "sleep_gummies": "علكة النوم بالميلاتونين ضد الأرق",
-    "ashwagandha_tea": "شاي الأشواجندا ضد التوتر",
-    "focus_coffee": "قهوة التركيز بالإل-ثيانين ضد الخمول",
+    "sleep_gummies": "علكة النوم العميق (ميلاتونين ومغنيسيوم)",
+    "saffron_gummies": "علكة الزعفران ضد التوتر والمزاج",
+    "focus_coffee": "قهوة التركيز بالإل-ثيانين وفطر عرف الأسد",
 }
 
 PRODUCT_SLUGS: dict[str, str] = {
-    "sleep_gummies": "sleep-melatonin-gummies",
-    "ashwagandha_tea": "ashwagandha-tea",
+    "sleep_gummies": "deep-sleep-stack-gummies",
+    "saffron_gummies": "saffron-stress-gummies",
     "focus_coffee": "l-theanine-focus-coffee",
+}
+
+PRODUCT_SKUS: dict[str, str] = {
+    "sleep_gummies": "SKU-SLP-GUM",
+    "saffron_gummies": "SKU-SAF-GUM",
+    "focus_coffee": "SKU-FOC-COF",
 }
 
 # Upsell mapping: primary product → upsell product
 UPSELL_MAP: dict[str, str] = {
-    "sleep_gummies": "ashwagandha_tea",
-    "ashwagandha_tea": "sleep_gummies",
-    "focus_coffee": "ashwagandha_tea",
+    "sleep_gummies": "saffron_gummies",
+    "saffron_gummies": "sleep_gummies",
+    "focus_coffee": "saffron_gummies",
 }
 
 
