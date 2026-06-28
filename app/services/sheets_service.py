@@ -4,12 +4,13 @@ import html
 import logging
 import re
 from datetime import datetime, timezone
+from typing import Any
 
 import httpx
 
 from app.core.config import settings
 from app.db.models import Order
-from app.services.pricing import PRODUCT_SKUS, canonical_product_id
+from app.services.pricing import PRODUCT_NAMES_AR, PRODUCT_SKUS, canonical_product_id
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,7 @@ def _gas_response_ok(response: httpx.Response) -> bool:
         return '"ok":true' in normalized
 
 
-async def send_order_to_sheets(order: Order) -> dict[str, object]:
-    """POST the order to the configured Google Sheets webhook."""
-    if not settings.GOOGLE_SHEETS_WEBHOOK_URL:
-        logger.warning("GOOGLE_SHEETS_WEBHOOK_URL is not configured; skipping Sheets push")
-        return {"ok": False, "error": "webhook_not_configured"}
-
+def build_order_sheet_row(order: Order) -> dict[str, object]:
     products = [item.name_ar for item in order.items]
     skus = [
         PRODUCT_SKUS.get(canonical_product_id(item.product_id), "SKU-UNKNOWN")
@@ -42,25 +38,79 @@ async def send_order_to_sheets(order: Order) -> dict[str, object]:
     date_str = created_date.strftime("%d/%m/%Y")
     phone = order.phone_e164.replace("+", "") if order.phone_e164 else ""
 
-    payload = {
-        "type": "order_created",
-        "order": {
-            "date": date_str,
-            "orderid": order.order_number,
-            "country": "KSA",
-            "name": order.customer_name,
-            "phone": phone,
-            "product": " + ".join(products),
-            "sku": " + ".join(skus),
-            "quantity": " + ".join(quantities),
-            "totalprice": order.total_sar,
-            "currency": "SAR",
-            "status": "",
-        },
+    return {
+        "date": date_str,
+        "orderid": order.order_number,
+        "country": "KSA",
+        "name": order.customer_name,
+        "phone": phone,
+        "product": " + ".join(products),
+        "sku": " + ".join(skus),
+        "quantity": " + ".join(quantities),
+        "totalprice": order.total_sar,
+        "currency": "SAR",
+        "status": order.status or "",
     }
 
+
+async def send_order_to_sheets(order: Order) -> dict[str, object]:
+    """POST a new order row to the configured Google Sheets webhook."""
+    return await _send_sheets_payload(
+        {"type": "order_created", "order": build_order_sheet_row(order)},
+        order.order_number,
+        "order_created",
+    )
+
+
+async def send_order_update_to_sheets(order: Order) -> dict[str, object]:
+    """Update an existing Orders row after upsell or order changes."""
+    return await _send_sheets_payload(
+        {"type": "order_updated", "order": build_order_sheet_row(order)},
+        order.order_number,
+        "order_updated",
+    )
+
+
+async def send_upsell_accepted_to_sheets(order: Order, event_id: str) -> dict[str, object]:
+    """Append a row to the Upsells tab."""
+    upsell_items = [item for item in order.items if item.added_from == "upsell"]
+    if not upsell_items:
+        return {"ok": False, "error": "no_upsell_item"}
+
+    item = upsell_items[-1]
+    return await _send_sheets_payload(
+        {
+            "type": "upsell_accepted",
+            "upsell": {
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "order_id": order.order_number,
+                "product_id": item.product_id,
+                "product_name": item.name_ar or PRODUCT_NAMES_AR.get(item.product_id, ""),
+                "price_sar": item.price_sar,
+                "event_id": event_id,
+            },
+        },
+        order.order_number,
+        "upsell_accepted",
+    )
+
+
+async def _send_sheets_payload(
+    payload: dict[str, Any],
+    order_number: str,
+    event_type: str,
+) -> dict[str, object]:
+    if not settings.GOOGLE_SHEETS_WEBHOOK_URL:
+        logger.warning("GOOGLE_SHEETS_WEBHOOK_URL is not configured; skipping Sheets push")
+        return {"ok": False, "error": "webhook_not_configured"}
+
     webhook_host = settings.GOOGLE_SHEETS_WEBHOOK_URL.split("/macros/s/")[0]
-    logger.info("Sending order %s to Sheets webhook (%s...)", order.order_number, webhook_host)
+    logger.info(
+        "Sending %s for order %s to Sheets webhook (%s...)",
+        event_type,
+        order_number,
+        webhook_host,
+    )
 
     try:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
@@ -71,16 +121,18 @@ async def send_order_to_sheets(order: Order) -> dict[str, object]:
 
             if _gas_response_ok(response):
                 logger.info(
-                    "Sheets webhook delivered for order %s (HTTP %s): %s",
-                    order.order_number,
+                    "Sheets %s delivered for order %s (HTTP %s): %s",
+                    event_type,
+                    order_number,
                     response.status_code,
                     body[:200],
                 )
                 return {"ok": True, "status_code": response.status_code, "body": body}
 
             logger.error(
-                "Sheets webhook failed for order %s (HTTP %s): %s",
-                order.order_number,
+                "Sheets %s failed for order %s (HTTP %s): %s",
+                event_type,
+                order_number,
                 response.status_code,
                 body,
             )
@@ -90,7 +142,7 @@ async def send_order_to_sheets(order: Order) -> dict[str, object]:
                 "error": body,
             }
     except Exception as exc:  # noqa: BLE001
-        logger.error("Sheets webhook failed for order %s: %s", order.order_number, str(exc))
+        logger.error("Sheets %s failed for order %s: %s", event_type, order_number, str(exc))
         return {"ok": False, "error": str(exc)}
 
 

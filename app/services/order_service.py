@@ -28,7 +28,11 @@ from app.services.pricing import (
     validate_item_price,
     validate_upsell_price,
 )
-from app.services.sheets_service import send_order_to_sheets
+from app.services.sheets_service import (
+    send_order_to_sheets,
+    send_order_update_to_sheets,
+    send_upsell_accepted_to_sheets,
+)
 
 if TYPE_CHECKING:
     pass
@@ -201,6 +205,48 @@ async def run_order_side_effects(order_id: uuid.UUID) -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.error(
                     "Side effects background task failed for %s (attempt %s): %s",
+                    order_id,
+                    attempt + 1,
+                    exc,
+                )
+                await db.rollback()
+                if attempt < 4:
+                    await asyncio.sleep(0.25 * (attempt + 1))
+
+
+async def run_upsell_side_effects(order_id: uuid.UUID, event_id: str) -> None:
+    """Sync updated order + upsell line to Google Sheets after upsell is saved."""
+    from app.db.session import AsyncSessionLocal
+
+    for attempt in range(5):
+        async with AsyncSessionLocal() as db:
+            try:
+                result = await db.execute(
+                    select(Order)
+                    .options(selectinload(Order.items))
+                    .where(Order.id == order_id)
+                )
+                order = result.scalar_one_or_none()
+                if order is None:
+                    if attempt < 4:
+                        await asyncio.sleep(0.25 * (attempt + 1))
+                        continue
+                    logger.error("Upsell side effects skipped: order id %s not found", order_id)
+                    return
+
+                update_result = await send_order_update_to_sheets(order)
+                upsell_result = await send_upsell_accepted_to_sheets(order, event_id)
+                order.sheet_response = {
+                    "order_updated": update_result,
+                    "upsell_accepted": upsell_result,
+                }
+                if update_result.get("ok"):
+                    order.sheet_sent_at = datetime.now(timezone.utc)
+                await db.commit()
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Upsell side effects failed for %s (attempt %s): %s",
                     order_id,
                     attempt + 1,
                     exc,

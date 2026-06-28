@@ -15,7 +15,13 @@ from app.schemas.orders import (
     UpsellRequest,
     UpsellResponse,
 )
-from app.services.order_service import add_upsell, create_order, get_order_summary, run_order_side_effects
+from app.services.order_service import (
+    add_upsell,
+    create_order,
+    get_order_summary,
+    run_order_side_effects,
+    run_upsell_side_effects,
+)
 from app.services.pricing import UPSELL_PRICE, get_eligible_upsell
 
 logger = logging.getLogger(__name__)
@@ -93,9 +99,14 @@ async def create_order_endpoint(
 async def add_upsell_endpoint(
     order_id: str,
     upsell_data: Annotated[UpsellRequest, Body()],
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> UpsellResponse:
     order = await add_upsell(db, order_id, upsell_data)
+    await db.commit()
+    background_tasks.add_task(
+        run_upsell_side_effects, order.id, str(upsell_data.event_id)
+    )
     return UpsellResponse(ok=True, order_id=order.order_number, new_total_sar=order.total_sar)
 
 
