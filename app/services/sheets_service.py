@@ -31,17 +31,12 @@ async def send_order_to_sheets(order: Order) -> dict[str, object]:
         logger.warning("GOOGLE_SHEETS_WEBHOOK_URL is not configured; skipping Sheets push")
         return {"ok": False, "error": "webhook_not_configured"}
 
-    from app.services.pricing import _resolve_offer_quantity
-
     products = [item.name_ar for item in order.items]
     skus = [
         PRODUCT_SKUS.get(canonical_product_id(item.product_id), "SKU-UNKNOWN")
         for item in order.items
     ]
-    quantities = [
-        str(_resolve_offer_quantity(item.offer_id, item.offer_quantity))
-        for item in order.items
-    ]
+    quantities = [str(item.offer_quantity) for item in order.items]
 
     created_date = order.created_at if order.created_at else datetime.now(timezone.utc)
     date_str = created_date.strftime("%d/%m/%Y")

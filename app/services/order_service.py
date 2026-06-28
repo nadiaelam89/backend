@@ -24,6 +24,7 @@ from app.services.pricing import (
     calculate_total,
     canonical_product_id,
     get_eligible_upsell,
+    resolve_bundle_product_ids,
     validate_item_price,
     validate_upsell_price,
 )
@@ -128,22 +129,43 @@ async def create_order(
     )
     db.add(order)
 
-    # 7. Persist items
+    # 7. Persist items (expand bundles into separate products for fulfillment)
     for item in order_data.items:
-        product_id = canonical_product_id(item.product_id)
-        db_item = OrderItem(
-            id=uuid.uuid4(),
-            order_id=order.id,
-            product_id=product_id,
-            slug=item.slug or PRODUCT_SLUGS.get(product_id, ""),
-            name_ar=PRODUCT_NAMES_AR[product_id],
-            offer_id=item.offer_id,
-            offer_quantity=item.offer_quantity,
-            unit_context="standard_offer",
-            price_sar=item.price_sar,
-            added_from=item.added_from,
-        )
-        db.add(db_item)
+        bundle_product_ids = resolve_bundle_product_ids(item.product_id, item.offer_id)
+
+        if len(bundle_product_ids) == 1:
+            product_id = bundle_product_ids[0]
+            db.add(
+                OrderItem(
+                    id=uuid.uuid4(),
+                    order_id=order.id,
+                    product_id=product_id,
+                    slug=item.slug or PRODUCT_SLUGS.get(product_id, ""),
+                    name_ar=PRODUCT_NAMES_AR[product_id],
+                    offer_id=item.offer_id,
+                    offer_quantity=item.offer_quantity,
+                    unit_context="standard_offer",
+                    price_sar=item.price_sar,
+                    added_from=item.added_from,
+                )
+            )
+            continue
+
+        for index, product_id in enumerate(bundle_product_ids):
+            db.add(
+                OrderItem(
+                    id=uuid.uuid4(),
+                    order_id=order.id,
+                    product_id=product_id,
+                    slug=PRODUCT_SLUGS.get(product_id, ""),
+                    name_ar=PRODUCT_NAMES_AR[product_id],
+                    offer_id=item.offer_id,
+                    offer_quantity=1,
+                    unit_context="bundle_primary" if index == 0 else "bundle_component",
+                    price_sar=item.price_sar if index == 0 else 0,
+                    added_from=item.added_from,
+                )
+            )
 
     await db.flush()
     await db.refresh(order, attribute_names=["items"])

@@ -11,6 +11,7 @@ from app.services.pricing import (
     calculate_total,
     canonical_product_id,
     get_eligible_upsell,
+    resolve_bundle_product_ids,
     validate_item_price,
     validate_upsell_price,
 )
@@ -164,3 +165,15 @@ def test_valid_products_set() -> None:
     assert "saffron_gummies" in VALID_PRODUCTS
     assert "mushroom_coffee" in VALID_PRODUCTS
     assert len(VALID_PRODUCTS) == 3
+
+
+def test_resolve_bundle_product_ids() -> None:
+    assert resolve_bundle_product_ids("sleep_gummies", "sleep_gummies_1") == [
+        "magnesium_gummies"
+    ]
+    assert resolve_bundle_product_ids(
+        "sleep_gummies", "sleep_gummies_bundle_1"
+    ) == ["magnesium_gummies", "saffron_gummies"]
+    assert resolve_bundle_product_ids(
+        "sleep_gummies", "sleep_gummies_bundle_2"
+    ) == ["magnesium_gummies", "saffron_gummies", "mushroom_coffee"]

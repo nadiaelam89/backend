@@ -54,6 +54,13 @@ UPSELL_MAP: dict[str, str] = {
     "mushroom_coffee": "saffron_gummies",
 }
 
+# Bundle composition mirrors frontend product crossSellIds (canonical ids).
+CROSS_SELL_IDS: dict[str, list[str]] = {
+    "magnesium_gummies": ["saffron_gummies", "mushroom_coffee"],
+    "saffron_gummies": ["magnesium_gummies", "mushroom_coffee"],
+    "mushroom_coffee": ["saffron_gummies", "magnesium_gummies"],
+}
+
 
 # ---------------------------------------------------------------------------
 # Validation helpers
@@ -72,6 +79,18 @@ def _resolve_offer_quantity(offer_id: str, offer_quantity: int) -> int:
 def canonical_product_id(product_id: str) -> str:
     """Normalize legacy storefront product keys to current catalog ids."""
     return LEGACY_PRODUCT_IDS.get(product_id, product_id)
+
+
+def resolve_bundle_product_ids(product_id: str, offer_id: str) -> list[str]:
+    """Expand bundle offer lines into the distinct products the customer receives."""
+    primary = canonical_product_id(product_id)
+    cross_sells = CROSS_SELL_IDS.get(primary, [])
+
+    if offer_id.endswith("_bundle_2") and len(cross_sells) >= 2:
+        return [primary, cross_sells[0], cross_sells[1]]
+    if offer_id.endswith("_bundle_1") and len(cross_sells) >= 1:
+        return [primary, cross_sells[0]]
+    return [primary]
 
 
 def validate_item_price(
