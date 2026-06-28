@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ from app.services.pricing import (
     PRODUCT_SLUGS,
     UPSELL_PRICE,
     calculate_total,
+    canonical_product_id,
     get_eligible_upsell,
     validate_item_price,
     validate_upsell_price,
@@ -78,7 +80,12 @@ async def create_order(
 
     # 2. Server-side price validation for every item
     for item in order_data.items:
-        if not validate_item_price(item.product_id, item.offer_quantity, item.price_sar):
+        if not validate_item_price(
+            item.product_id,
+            item.offer_quantity,
+            item.price_sar,
+            item.offer_id,
+        ):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
@@ -123,12 +130,13 @@ async def create_order(
 
     # 7. Persist items
     for item in order_data.items:
+        product_id = canonical_product_id(item.product_id)
         db_item = OrderItem(
             id=uuid.uuid4(),
             order_id=order.id,
-            product_id=item.product_id,
-            slug=item.slug or PRODUCT_SLUGS.get(item.product_id, ""),
-            name_ar=PRODUCT_NAMES_AR[item.product_id],
+            product_id=product_id,
+            slug=item.slug or PRODUCT_SLUGS.get(product_id, ""),
+            name_ar=PRODUCT_NAMES_AR[product_id],
             offer_id=item.offer_id,
             offer_quantity=item.offer_quantity,
             unit_context="standard_offer",
@@ -142,10 +150,42 @@ async def create_order(
 
     logger.info("Order %s persisted (total %d SAR)", order_number, total)
 
-    # 8. Background side effects: Sheets + CAPI (must not raise)
-    await _dispatch_side_effects(db, order, phone_hash)
-
     return order
+
+
+async def run_order_side_effects(order_id: uuid.UUID) -> None:
+    """Run Sheets + CAPI after the HTTP response is sent."""
+    from app.db.session import AsyncSessionLocal
+
+    for attempt in range(5):
+        async with AsyncSessionLocal() as db:
+            try:
+                result = await db.execute(
+                    select(Order)
+                    .options(selectinload(Order.items))
+                    .where(Order.id == order_id)
+                )
+                order = result.scalar_one_or_none()
+                if order is None:
+                    if attempt < 4:
+                        await asyncio.sleep(0.25 * (attempt + 1))
+                        continue
+                    logger.error("Side effects skipped: order id %s not found", order_id)
+                    return
+
+                await _dispatch_side_effects(db, order, order.phone_hash_sha256)
+                await db.commit()
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Side effects background task failed for %s (attempt %s): %s",
+                    order_id,
+                    attempt + 1,
+                    exc,
+                )
+                await db.rollback()
+                if attempt < 4:
+                    await asyncio.sleep(0.25 * (attempt + 1))
 
 
 # ---------------------------------------------------------------------------
@@ -258,8 +298,12 @@ async def _dispatch_side_effects(db: AsyncSession, order: Order, phone_hash: str
     """
     # Google Sheets
     try:
-        await send_order_to_sheets(order)
-        order.sheet_sent_at = datetime.now(timezone.utc)
+        sheet_result = await send_order_to_sheets(order)
+        order.sheet_response = sheet_result
+        if sheet_result.get("ok"):
+            order.sheet_sent_at = datetime.now(timezone.utc)
+        else:
+            logger.error("Sheets push failed for %s: %s", order.order_number, sheet_result)
     except Exception as exc:  # noqa: BLE001
         logger.error("Sheets dispatch error for %s: %s", order.order_number, exc)
 

@@ -6,10 +6,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.services.pricing import (
-    STANDARD_PRICES,
     UPSELL_PRICE,
     VALID_PRODUCTS,
     calculate_total,
+    canonical_product_id,
     get_eligible_upsell,
     validate_item_price,
     validate_upsell_price,
@@ -24,15 +24,15 @@ from app.services.pricing import (
 @pytest.mark.parametrize(
     "product_id,qty,price,expected",
     [
-        ("sleep_gummies", 1, 199, True),
-        ("sleep_gummies", 2, 279, True),
-        ("sleep_gummies", 3, 349, True),
-        ("ashwagandha_tea", 1, 199, True),
-        ("ashwagandha_tea", 2, 279, True),
-        ("ashwagandha_tea", 3, 349, True),
-        ("focus_coffee", 1, 199, True),
-        ("focus_coffee", 2, 279, True),
-        ("focus_coffee", 3, 349, True),
+        ("magnesium_gummies", 1, 199, True),
+        ("magnesium_gummies", 2, 349, True),
+        ("magnesium_gummies", 3, 449, True),
+        ("saffron_gummies", 1, 199, True),
+        ("saffron_gummies", 2, 349, True),
+        ("saffron_gummies", 3, 449, True),
+        ("mushroom_coffee", 1, 199, True),
+        ("mushroom_coffee", 2, 349, True),
+        ("mushroom_coffee", 3, 449, True),
     ],
 )
 def test_valid_item_prices(product_id: str, qty: int, price: int, expected: bool) -> None:
@@ -42,16 +42,16 @@ def test_valid_item_prices(product_id: str, qty: int, price: int, expected: bool
 @pytest.mark.parametrize(
     "product_id,qty,claimed_price,description",
     [
-        ("sleep_gummies", 1, 99, "price too low"),
-        ("sleep_gummies", 1, 198, "price off by one (low)"),
-        ("sleep_gummies", 1, 200, "price off by one (high)"),
-        ("sleep_gummies", 2, 199, "qty 2 price is 279, not 199"),
-        ("sleep_gummies", 3, 279, "qty 3 price is 349, not 279"),
-        ("sleep_gummies", 3, 0, "zero price"),
-        ("sleep_gummies", 3, -349, "negative price"),
+        ("magnesium_gummies", 1, 99, "price too low"),
+        ("magnesium_gummies", 1, 198, "price off by one (low)"),
+        ("magnesium_gummies", 1, 200, "price off by one (high)"),
+        ("magnesium_gummies", 2, 199, "qty 2 price is 349, not 199"),
+        ("magnesium_gummies", 3, 349, "qty 3 price is 449, not 349"),
+        ("magnesium_gummies", 3, 0, "zero price"),
+        ("magnesium_gummies", 3, -449, "negative price"),
         ("unknown_product", 1, 199, "unknown product"),
-        ("sleep_gummies", 4, 199, "quantity 4 is not in price table"),
-        ("sleep_gummies", 0, 199, "quantity 0 is invalid"),
+        ("magnesium_gummies", 4, 199, "quantity 4 is not in price table"),
+        ("magnesium_gummies", 0, 199, "quantity 0 is invalid"),
     ],
 )
 def test_tampered_item_prices(
@@ -59,6 +59,33 @@ def test_tampered_item_prices(
 ) -> None:
     result = validate_item_price(product_id, qty, claimed_price)
     assert result is False, f"Expected rejection for: {description}"
+
+
+@pytest.mark.parametrize(
+    "product_id,offer_id,qty,price",
+    [
+        ("magnesium_gummies", "magnesium_gummies_bundle_1", 1, 349),
+        ("magnesium_gummies", "magnesium_gummies_bundle_2", 1, 449),
+        ("saffron_gummies", "saffron_gummies_bundle_1", 1, 349),
+    ],
+)
+def test_bundle_offer_ids_resolve_quantity(
+    product_id: str, offer_id: str, qty: int, price: int
+) -> None:
+    assert validate_item_price(product_id, qty, price, offer_id) is True
+
+
+def test_bundle_offer_id_with_wrong_price_rejected() -> None:
+    assert (
+        validate_item_price("magnesium_gummies", 1, 349, "magnesium_gummies_bundle_1")
+        is False
+    )
+
+
+def test_legacy_product_ids_normalize_for_pricing() -> None:
+    assert validate_item_price("sleep_gummies", 1, 199) is True
+    assert validate_item_price("focus_coffee", 3, 449) is True
+    assert canonical_product_id("sleep_gummies") == "magnesium_gummies"
 
 
 # ---------------------------------------------------------------------------
@@ -92,8 +119,8 @@ def test_calculate_total_single_item() -> None:
 
 
 def test_calculate_total_multiple_items() -> None:
-    items = [_make_item(279), _make_item(99)]
-    assert calculate_total(items) == 378
+    items = [_make_item(349), _make_item(149)]
+    assert calculate_total(items) == 498
 
 
 def test_calculate_total_empty() -> None:
@@ -105,39 +132,35 @@ def test_calculate_total_empty() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_upsell_sleep_gummies_gets_ashwagandha() -> None:
-    result = get_eligible_upsell(["sleep_gummies"])
-    assert result == "ashwagandha_tea"
+def test_upsell_magnesium_gets_saffron() -> None:
+    result = get_eligible_upsell(["magnesium_gummies"])
+    assert result == "saffron_gummies"
 
 
-def test_upsell_ashwagandha_gets_sleep_gummies() -> None:
-    result = get_eligible_upsell(["ashwagandha_tea"])
-    assert result == "sleep_gummies"
+def test_upsell_saffron_gets_magnesium() -> None:
+    result = get_eligible_upsell(["saffron_gummies"])
+    assert result == "magnesium_gummies"
 
 
-def test_upsell_focus_coffee_gets_ashwagandha() -> None:
-    result = get_eligible_upsell(["focus_coffee"])
-    assert result == "ashwagandha_tea"
+def test_upsell_mushroom_coffee_gets_saffron() -> None:
+    result = get_eligible_upsell(["mushroom_coffee"])
+    assert result == "saffron_gummies"
 
 
 def test_upsell_all_three_products_returns_none() -> None:
-    result = get_eligible_upsell(["sleep_gummies", "ashwagandha_tea", "focus_coffee"])
+    result = get_eligible_upsell(
+        ["magnesium_gummies", "saffron_gummies", "mushroom_coffee"]
+    )
     assert result is None
 
 
 def test_upsell_already_has_target_skips() -> None:
-    # sleep_gummies would suggest ashwagandha_tea, but it's already in cart
-    result = get_eligible_upsell(["sleep_gummies", "ashwagandha_tea"])
-    # focus_coffee is the remaining option; no direct mapping applies
-    # since neither sleep_gummies → ashwagandha_tea (already present)
-    # we expect no upsell or focus_coffee depending on logic
-    # The function scans in reverse; sleep_gummies → ashwagandha_tea (already present) → skip
-    # ashwagandha_tea → sleep_gummies (already present) → skip → returns None
+    result = get_eligible_upsell(["magnesium_gummies", "saffron_gummies"])
     assert result is None
 
 
 def test_valid_products_set() -> None:
-    assert "sleep_gummies" in VALID_PRODUCTS
-    assert "ashwagandha_tea" in VALID_PRODUCTS
-    assert "focus_coffee" in VALID_PRODUCTS
+    assert "magnesium_gummies" in VALID_PRODUCTS
+    assert "saffron_gummies" in VALID_PRODUCTS
+    assert "mushroom_coffee" in VALID_PRODUCTS
     assert len(VALID_PRODUCTS) == 3

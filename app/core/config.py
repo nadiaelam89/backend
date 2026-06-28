@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://sukoonhealth:password@localhost:5432/sukoonhealth"
 
     GOOGLE_SHEETS_WEBHOOK_URL: str = ""
-    GOOGLE_SHEETS_WEBHOOK_SECRET: str = ""
 
     META_PIXEL_ID: str = ""
     META_ACCESS_TOKEN: str = ""

@@ -16,17 +16,17 @@ def _order_request() -> CreateOrderRequest:
         phone="0512345678",
         items=[
             {
-                "product_id": "sleep_gummies",
-                "slug": "sleep-melatonin-gummies",
-                "offer_id": "sleep_3",
+                "product_id": "magnesium_gummies",
+                "slug": "magnesium-glycinate-gummies",
+                "offer_id": "magnesium_gummies_3",
                 "offer_quantity": 3,
-                "price_sar": 349,
+                "price_sar": 449,
                 "added_from": "pdp",
             }
         ],
         currency="SAR",
         event_id=uuid.uuid4(),
-        source_url="https://sukoonhealth.shop/products/sleep-melatonin-gummies",
+        source_url="https://sukoonhealth.shop/products/magnesium-glycinate-gummies",
     )
 
 

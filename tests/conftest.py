@@ -81,14 +81,14 @@ def _setup_default_mocks(mock_create: Any, mock_upsell: Any, mock_summary: Any) 
     from app.db.models import Order, OrderItem
 
     fake_item = MagicMock(spec=OrderItem)
-    fake_item.product_id = "sleep_gummies"
-    fake_item.name_ar = "علكة النوم بالميلاتونين ضد الأرق"
+    fake_item.product_id = "magnesium_gummies"
+    fake_item.name_ar = "علكة المغنيسيوم جلايسينات 400 ملغ"
     fake_item.offer_quantity = 3
-    fake_item.price_sar = 349
+    fake_item.price_sar = 449
 
     fake_order = MagicMock(spec=Order)
     fake_order.order_number = "SH-20260625-000001"
-    fake_order.total_sar = 349
+    fake_order.total_sar = 449
     fake_order.status = "new"
     fake_order.items = [fake_item]
 
@@ -98,8 +98,8 @@ def _setup_default_mocks(mock_create: Any, mock_upsell: Any, mock_summary: Any) 
         "ok": True,
         "order_id": "SH-20260625-000001",
         "status": "new",
-        "total_sar": 349,
-        "product_names": ["علكة النوم بالميلاتونين ضد الأرق"],
+        "total_sar": 449,
+        "product_names": ["علكة المغنيسيوم جلايسينات 400 ملغ"],
     }
 
 
@@ -114,11 +114,11 @@ def valid_order_payload(**overrides: Any) -> dict[str, Any]:
         "phone": "0512345678",
         "items": [
             {
-                "product_id": "sleep_gummies",
-                "slug": "sleep-melatonin-gummies",
-                "offer_id": "sleep_3",
+                "product_id": "magnesium_gummies",
+                "slug": "magnesium-glycinate-gummies",
+                "offer_id": "magnesium_gummies_3",
                 "offer_quantity": 3,
-                "price_sar": 349,
+                "price_sar": 449,
                 "added_from": "pdp",
             }
         ],

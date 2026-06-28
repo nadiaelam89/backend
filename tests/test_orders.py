@@ -40,7 +40,7 @@ async def test_create_order_success(client: AsyncClient) -> None:
     data = response.json()
     assert data["ok"] is True
     assert data["order_id"].startswith("SH-")
-    assert data["total_sar"] == 349
+    assert data["total_sar"] == 449
 
 
 @pytest.mark.asyncio
@@ -50,10 +50,10 @@ async def test_create_order_includes_upsell(client: AsyncClient) -> None:
     assert response.status_code == 201
     data = response.json()
     upsell = data.get("eligible_upsell")
-    # The mock order has sleep_gummies → upsell should be ashwagandha_tea
+    # The mock order has magnesium_gummies → upsell should be saffron_gummies
     assert upsell is not None
-    assert upsell["product_id"] == "ashwagandha_tea"
-    assert upsell["price_sar"] == 99
+    assert upsell["product_id"] == "saffron_gummies"
+    assert upsell["price_sar"] == 149
     assert upsell["expires_in_seconds"] == 15
 
 
@@ -213,20 +213,20 @@ async def test_sheets_failure_does_not_fail_order() -> None:
     db_mock.execute = AsyncMock(return_value=count_mock)
 
     fake_item = MagicMock(spec=OrderItem)
-    fake_item.product_id = "sleep_gummies"
-    fake_item.name_ar = "علكة النوم بالميلاتونين ضد الأرق"
+    fake_item.product_id = "magnesium_gummies"
+    fake_item.name_ar = "علكة المغنيسيوم جلايسينات 400 ملغ"
     fake_item.offer_quantity = 3
-    fake_item.price_sar = 349
-    fake_item.slug = "sleep-melatonin-gummies"
-    fake_item.offer_id = "sleep_3"
+    fake_item.price_sar = 449
+    fake_item.slug = "magnesium-glycinate-gummies"
+    fake_item.offer_id = "magnesium_gummies_3"
     fake_item.unit_context = "standard_offer"
     fake_item.added_from = "pdp"
 
     fake_order = MagicMock(spec=Order)
     fake_order.id = uuid.uuid4()
     fake_order.order_number = "SH-20260625-000001"
-    fake_order.total_sar = 349
-    fake_order.subtotal_sar = 349
+    fake_order.total_sar = 449
+    fake_order.subtotal_sar = 449
     fake_order.status = "new"
     fake_order.items = [fake_item]
     fake_order.event_id = str(uuid.uuid4())
@@ -272,8 +272,8 @@ async def test_capi_failure_does_not_fail_order() -> None:
     from app.db.models import Order, OrderItem
 
     fake_item = MagicMock(spec=OrderItem)
-    fake_item.product_id = "focus_coffee"
-    fake_item.name_ar = "قهوة التركيز بالإل-ثيانين ضد الخمول"
+    fake_item.product_id = "mushroom_coffee"
+    fake_item.name_ar = "قهوة الفطر العضوية الفورية"
     fake_item.offer_quantity = 1
     fake_item.price_sar = 199
 
@@ -297,8 +297,8 @@ async def test_capi_failure_does_not_fail_order() -> None:
 
         async with _AC(transport=ASGITransport(app=app), base_url="http://test") as ac:
             payload = valid_order_payload()
-            payload["items"][0]["product_id"] = "focus_coffee"
-            payload["items"][0]["slug"] = "l-theanine-focus-coffee"
+            payload["items"][0]["product_id"] = "mushroom_coffee"
+            payload["items"][0]["slug"] = "organic-mushroom-coffee"
             payload["items"][0]["offer_quantity"] = 1
             payload["items"][0]["price_sar"] = 199
             resp = await ac.post("/api/orders", json=payload)
@@ -335,8 +335,8 @@ async def test_order_summary_success(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_upsell_success(client: AsyncClient) -> None:
     payload = {
-        "product_id": "ashwagandha_tea",
-        "price_sar": 99,
+        "product_id": "saffron_gummies",
+        "price_sar": 149,
         "event_id": str(uuid.uuid4()),
     }
     response = await client.post("/api/orders/SH-20260625-000001/upsell", json=payload)

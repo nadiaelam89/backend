@@ -66,18 +66,18 @@ docker run -p 8000:8000 --env-file .env sukoon-health-api
 
 | ID | Slug | Name (AR) |
 |----|------|-----------|
-| `sleep_gummies` | `sleep-melatonin-gummies` | علكة النوم بالميلاتونين ضد الأرق |
-| `ashwagandha_tea` | `ashwagandha-tea` | شاي الأشواجندا ضد التوتر |
-| `focus_coffee` | `l-theanine-focus-coffee` | قهوة التركيز بالإل-ثيانين ضد الخمول |
+| `magnesium_gummies` | `magnesium-glycinate-gummies` | علكة المغنيسيوم جلايسينات 400 ملغ |
+| `saffron_gummies` | `saffron-magnesium-gummies` | علكة الزعفران مع المغنيسيوم |
+| `mushroom_coffee` | `organic-mushroom-coffee` | قهوة الفطر العضوية الفورية |
 
 ## Pricing
 
 | Quantity | Price (SAR) |
 |----------|-------------|
 | 1 | 199 |
-| 2 | 279 |
-| 3 | 349 |
-| Upsell | 99 |
+| 2 | 349 |
+| 3 | 449 |
+| Upsell | 149 |
 
 ## Optional MaxMind Fraud Screening
 

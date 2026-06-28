@@ -18,32 +18,40 @@ STANDARD_PRICES: dict[int, int] = {
 UPSELL_PRICE: int = 149
 
 VALID_PRODUCTS: frozenset[str] = frozenset(
-    {"sleep_gummies", "saffron_gummies", "focus_coffee"}
+    {"magnesium_gummies", "saffron_gummies", "mushroom_coffee"}
 )
 
+# Legacy product keys accepted from older storefront / API clients.
+LEGACY_PRODUCT_IDS: dict[str, str] = {
+    "sleep_gummies": "magnesium_gummies",
+    "focus_coffee": "mushroom_coffee",
+}
+
+ACCEPTED_PRODUCT_IDS: frozenset[str] = VALID_PRODUCTS | frozenset(LEGACY_PRODUCT_IDS.keys())
+
 PRODUCT_NAMES_AR: dict[str, str] = {
-    "sleep_gummies": "علكة النوم العميق (ميلاتونين ومغنيسيوم)",
-    "saffron_gummies": "علكة الزعفران ضد التوتر والمزاج",
-    "focus_coffee": "قهوة التركيز بالإل-ثيانين وفطر عرف الأسد",
+    "magnesium_gummies": "علكة المغنيسيوم جلايسينات 400 ملغ",
+    "saffron_gummies": "علكة الزعفران مع المغنيسيوم",
+    "mushroom_coffee": "قهوة الفطر العضوية الفورية",
 }
 
 PRODUCT_SLUGS: dict[str, str] = {
-    "sleep_gummies": "deep-sleep-stack-gummies",
-    "saffron_gummies": "saffron-stress-gummies",
-    "focus_coffee": "l-theanine-focus-coffee",
+    "magnesium_gummies": "magnesium-glycinate-gummies",
+    "saffron_gummies": "saffron-magnesium-gummies",
+    "mushroom_coffee": "organic-mushroom-coffee",
 }
 
 PRODUCT_SKUS: dict[str, str] = {
-    "sleep_gummies": "SKU-SLP-GUM",
-    "saffron_gummies": "SKU-SAF-GUM",
-    "focus_coffee": "SKU-FOC-COF",
+    "magnesium_gummies": "SKU-MG-GUM-400",
+    "saffron_gummies": "SKU-SAF-MG-GUM",
+    "mushroom_coffee": "SKU-MSK-COF-30",
 }
 
 # Upsell mapping: primary product → upsell product
 UPSELL_MAP: dict[str, str] = {
-    "sleep_gummies": "saffron_gummies",
-    "saffron_gummies": "sleep_gummies",
-    "focus_coffee": "saffron_gummies",
+    "magnesium_gummies": "saffron_gummies",
+    "saffron_gummies": "magnesium_gummies",
+    "mushroom_coffee": "saffron_gummies",
 }
 
 
@@ -52,11 +60,32 @@ UPSELL_MAP: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def validate_item_price(product_id: str, offer_quantity: int, claimed_price: int) -> bool:
+def _resolve_offer_quantity(offer_id: str, offer_quantity: int) -> int:
+    """Bundle cart lines use offer_id suffixes; quantity must match the price tier."""
+    if offer_id.endswith("_bundle_2"):
+        return 3
+    if offer_id.endswith("_bundle_1"):
+        return 2
+    return offer_quantity
+
+
+def canonical_product_id(product_id: str) -> str:
+    """Normalize legacy storefront product keys to current catalog ids."""
+    return LEGACY_PRODUCT_IDS.get(product_id, product_id)
+
+
+def validate_item_price(
+    product_id: str,
+    offer_quantity: int,
+    claimed_price: int,
+    offer_id: str = "",
+) -> bool:
     """Return True if the claimed price matches the server-side standard price table."""
+    product_id = canonical_product_id(product_id)
     if product_id not in VALID_PRODUCTS:
         return False
-    expected = STANDARD_PRICES.get(offer_quantity)
+    quantity = _resolve_offer_quantity(offer_id, offer_quantity)
+    expected = STANDARD_PRICES.get(quantity)
     if expected is None:
         return False
     return claimed_price == expected
@@ -74,13 +103,14 @@ def calculate_total(items: list[OrderItemRequest]) -> int:  # type: ignore[type-
 
 def get_eligible_upsell(product_ids: list[str]) -> str | None:
     """Return the upsell product_id to offer, or None if no upsell applies."""
-    unique = set(product_ids)
+    unique = {canonical_product_id(pid) for pid in product_ids}
     if unique == VALID_PRODUCTS:
         # All 3 products already in cart – skip upsell
         return None
     # Use the last (or first) product to determine upsell
     for pid in reversed(product_ids):
-        candidate = UPSELL_MAP.get(pid)
+        canonical = canonical_product_id(pid)
+        candidate = UPSELL_MAP.get(canonical)
         if candidate and candidate not in unique:
             return candidate
     return None

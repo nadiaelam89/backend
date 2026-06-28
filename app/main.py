@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -16,6 +18,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.models import Base
 from app.db.session import engine
+from app.services.pricing import ACCEPTED_PRODUCT_IDS
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging()
     logger.info("Starting %s [%s]", settings.APP_NAME, settings.APP_ENV)
     logger.info("CORS allowed origins: %s", settings.allowed_origins)
+    logger.info("Accepted product IDs: %s", sorted(ACCEPTED_PRODUCT_IDS))
+    if settings.GOOGLE_SHEETS_WEBHOOK_URL:
+        logger.info("Google Sheets webhook: configured")
+    else:
+        logger.warning("Google Sheets webhook: NOT configured (orders will not sync to Sheet)")
 
     # Local development on SQLite: create tables automatically (no migrations).
     # Production (PostgreSQL) continues to use Alembic migrations.
@@ -87,6 +95,14 @@ app.add_middleware(
 # Routers
 app.include_router(health.router)
 app.include_router(orders.router)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    logger.warning("Validation failed on %s %s: %s", request.method, request.url.path, exc.errors())
+    return await request_validation_exception_handler(request, exc)
 
 
 # ---------------------------------------------------------------------------

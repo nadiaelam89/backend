@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.services.pricing import VALID_PRODUCTS
+from app.services.pricing import ACCEPTED_PRODUCT_IDS, VALID_PRODUCTS, canonical_product_id
 
 
 # ---------------------------------------------------------------------------
@@ -34,9 +34,11 @@ class OrderItemRequest(BaseModel):
     @field_validator("product_id")
     @classmethod
     def validate_product_id(cls, v: str) -> str:
-        if v not in VALID_PRODUCTS:
-            raise ValueError(f"Unknown product_id '{v}'. Valid: {sorted(VALID_PRODUCTS)}")
-        return v
+        if v not in ACCEPTED_PRODUCT_IDS:
+            raise ValueError(
+                f"Unknown product_id '{v}'. Valid: {sorted(ACCEPTED_PRODUCT_IDS)}"
+            )
+        return canonical_product_id(v)
 
 
 # ---------------------------------------------------------------------------
@@ -66,9 +68,9 @@ class UpsellRequest(BaseModel):
     @field_validator("product_id")
     @classmethod
     def validate_product_id(cls, v: str) -> str:
-        if v not in VALID_PRODUCTS:
+        if v not in ACCEPTED_PRODUCT_IDS:
             raise ValueError(f"Unknown product_id '{v}'.")
-        return v
+        return canonical_product_id(v)
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ from app.schemas.orders import (
     UpsellRequest,
     UpsellResponse,
 )
-from app.services.order_service import add_upsell, create_order, get_order_summary
+from app.services.order_service import add_upsell, create_order, get_order_summary, run_order_side_effects
 from app.services.pricing import UPSELL_PRICE, get_eligible_upsell
 
 logger = logging.getLogger(__name__)
@@ -59,12 +59,15 @@ def _get_client_country(request: Request) -> str | None:
 async def create_order_endpoint(
     request: Request,
     order_data: Annotated[CreateOrderRequest, Body()],
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> CreateOrderResponse:
     client_ip = _get_client_ip(request)
     client_country = _get_client_country(request)
 
     order = await create_order(db, order_data, client_ip, client_country)
+    await db.commit()
+    background_tasks.add_task(run_order_side_effects, order.id)
 
     # Determine upsell offer
     product_ids = [item.product_id for item in order.items]
