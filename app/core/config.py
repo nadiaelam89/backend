@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     MAXMIND_ALLOWED_COUNTRY: str = "SA"
     WHITELISTED_PHONES: str = ""
 
+    ADMIN_USERNAME: str = ""
+    ADMIN_PASSWORD: str = ""
+    ADMIN_SESSION_SECRET: str = ""
+
     @field_validator("APP_ENV")
     @classmethod
     def validate_env(cls, v: str) -> str:

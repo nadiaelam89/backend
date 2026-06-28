@@ -128,6 +128,7 @@ async def create_order(
         fbc=order_data.fbc,
         ttp=order_data.ttp,
         client_ip=client_ip,
+        client_country=client_country,
         client_user_agent=order_data.client_user_agent,
     )
     db.add(order)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Text, Uuid, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Float, Integer, Text, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -43,6 +43,7 @@ class Order(Base):
     fbc: Mapped[str | None] = mapped_column(Text, nullable=True)
     ttp: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_ip: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_country: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     sheet_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -111,3 +112,27 @@ class AnalyticsEvent(Base):
     )
 
     order: Mapped[Order | None] = relationship("Order", back_populates="analytics_events")
+
+
+class SiteEvent(Base):
+    __tablename__ = "site_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    event_name: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    page_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    product_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value_sar: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    utm: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+
+    client_ip: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_country: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    is_valid_traffic: Mapped[bool] = mapped_column(nullable=False, default=False, index=True)
+    fraud_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    risk_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )

@@ -7,6 +7,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.utils.request_meta import get_client_country, get_client_ip
 from app.schemas.orders import (
     CreateOrderRequest,
     CreateOrderResponse,
@@ -32,34 +33,6 @@ limiter = Limiter(key_func=get_remote_address)
 UPSELL_EXPIRES_SECONDS = 15
 
 
-def _get_client_ip(request: Request) -> str | None:
-    cloudflare_ip = request.headers.get("CF-Connecting-IP")
-    if cloudflare_ip:
-        return cloudflare_ip.strip()
-
-    true_client_ip = request.headers.get("True-Client-IP")
-    if true_client_ip:
-        return true_client_ip.strip()
-
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip()
-
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return None
-
-
-def _get_client_country(request: Request) -> str | None:
-    cloudflare_country = request.headers.get("CF-IPCountry")
-    if cloudflare_country and cloudflare_country not in {"XX", "T1"}:
-        return cloudflare_country.strip().upper()
-    return None
-
-
 @router.post("", response_model=CreateOrderResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_order_endpoint(
@@ -68,8 +41,8 @@ async def create_order_endpoint(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> CreateOrderResponse:
-    client_ip = _get_client_ip(request)
-    client_country = _get_client_country(request)
+    client_ip = get_client_ip(request)
+    client_country = get_client_country(request)
 
     order = await create_order(db, order_data, client_ip, client_country)
     await db.commit()
