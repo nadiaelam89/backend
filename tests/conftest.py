@@ -102,6 +102,7 @@ def _setup_default_mocks(mock_create: Any, mock_upsell: Any, mock_summary: Any) 
         "product_names": ["علكة المغنيسيوم جلايسينات 400 ملغ"],
         "items": [
             {
+                "product_id": "magnesium_gummies",
                 "name_ar": "علكة المغنيسيوم جلايسينات 400 ملغ",
                 "price_sar": 449,
                 "quantity": 3,

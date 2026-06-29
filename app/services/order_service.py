@@ -332,6 +332,7 @@ async def get_order_summary(db: AsyncSession, order_id: str) -> dict:
     order = await _get_order_or_404(db, order_id)
     items = [
         {
+            "product_id": item.product_id,
             "name_ar": item.name_ar,
             "price_sar": item.price_sar,
             "quantity": item.offer_quantity,

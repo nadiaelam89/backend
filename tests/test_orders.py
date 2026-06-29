@@ -321,6 +321,8 @@ async def test_order_summary_success(client: AsyncClient) -> None:
     assert data["order_id"] == "SH-20260625-000001"
     assert "total_sar" in data
     assert "product_names" in data
+    assert len(data["items"]) >= 1
+    assert "product_id" in data["items"][0]
     # Phone number must NOT be in the response
     assert "phone" not in data
     assert "phone_local" not in data

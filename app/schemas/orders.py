@@ -100,6 +100,7 @@ class UpsellResponse(BaseModel):
 
 
 class OrderSummaryItem(BaseModel):
+    product_id: str
     name_ar: str
     price_sar: int
     quantity: int = 1
