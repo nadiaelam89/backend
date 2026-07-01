@@ -38,6 +38,7 @@ async def send_purchase_event(
         "price": order.total_sar,
         "currency": order.currency,
         "transaction_id": order.event_id,
+        "client_dedup_id": order.event_id,
         "item_ids": [item.product_id for item in order.items],
         "description": " | ".join(item.name_ar for item in order.items),
         **({"ip_address": order.client_ip} if order.client_ip else {}),

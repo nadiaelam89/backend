@@ -19,7 +19,7 @@ async def send_purchase_event(
     pixel_code: str,
     access_token: str,
 ) -> dict[str, Any]:
-    """Send a PlaceAnOrder / Purchase event to TikTok Events API.
+    """Send a CompletePayment event to TikTok Events API.
 
     Returns a dict with keys: success (bool), status (int|None), body (dict|None).
     Never raises.
@@ -32,38 +32,39 @@ async def send_purchase_event(
         {
             "content_id": item.product_id,
             "content_name": item.name_ar,
+            "content_type": "product",
             "quantity": item.offer_quantity,
             "price": item.price_sar,
         }
         for item in order.items
     ]
 
+    user: dict[str, Any] = {"phone": phone_hash}
+    if order.ttp:
+        user["ttp"] = order.ttp
+    if order.client_ip:
+        user["ip"] = order.client_ip
+    if order.client_user_agent:
+        user["user_agent"] = order.client_user_agent
+
     payload: dict[str, Any] = {
-        "pixel_code": pixel_code,
-        "event": "PlaceAnOrder",
-        "event_id": order.event_id,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()),
-        "context": {
-            "user": {
-                "phone_number": phone_hash,
-                **({"ttp": order.ttp} if order.ttp else {}),
-            },
-            **(
-                {
-                    "ip": order.client_ip,
-                    "user_agent": order.client_user_agent,
-                }
-                if order.client_ip
-                else {}
-            ),
-            "page": {"url": order.source_url or ""},
-        },
-        "properties": {
-            "currency": order.currency,
-            "value": order.total_sar,
-            "order_id": order.order_number,
-            "contents": contents,
-        },
+        "event_source": "web",
+        "event_source_id": pixel_code,
+        "data": [
+            {
+                "event": "CompletePayment",
+                "event_time": int(time.time()),
+                "event_id": order.event_id,
+                "page": {"url": order.source_url or ""},
+                "user": user,
+                "properties": {
+                    "currency": order.currency,
+                    "value": order.total_sar,
+                    "order_id": order.order_number,
+                    "contents": contents,
+                },
+            }
+        ],
     }
 
     headers = {
@@ -76,7 +77,7 @@ async def send_purchase_event(
             response = await client.post(TIKTOK_EVENTS_URL, json=payload, headers=headers)
             body: dict = response.json() if response.content else {}
             logger.info(
-                "TikTok CAPI Purchase sent for order %s → HTTP %s",
+                "TikTok CAPI CompletePayment sent for order %s → HTTP %s",
                 order.order_number,
                 response.status_code,
             )

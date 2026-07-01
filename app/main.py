@@ -13,7 +13,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.routes import admin, events, health, orders
+from app.api.routes import admin, events, health, orders, payments, public, webhooks
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.models import Base
@@ -94,7 +94,10 @@ app.add_middleware(
 
 # Routers
 app.include_router(health.router)
+app.include_router(public.router)
 app.include_router(orders.router)
+app.include_router(payments.router)
+app.include_router(webhooks.router)
 app.include_router(events.router)
 app.include_router(admin.router)
 
