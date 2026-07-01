@@ -6,8 +6,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.services.pricing import (
+    COD_FEE_SAR,
     UPSELL_PRICE,
     VALID_PRODUCTS,
+    calculate_cod_fee,
     calculate_total,
     canonical_product_id,
     get_eligible_upsell,
@@ -127,6 +129,14 @@ def test_calculate_total_multiple_items() -> None:
 
 def test_calculate_total_empty() -> None:
     assert calculate_total([]) == 0
+
+
+def test_calculate_cod_fee() -> None:
+    items = [_make_item(199)]
+    assert calculate_cod_fee("cod") == COD_FEE_SAR
+    assert calculate_cod_fee("stripe") == 0
+    assert calculate_total(items, "cod") == 199 + COD_FEE_SAR
+    assert calculate_total(items, "stripe") == 199
 
 
 # ---------------------------------------------------------------------------

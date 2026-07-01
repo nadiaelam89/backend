@@ -17,6 +17,10 @@ STANDARD_PRICES: dict[int, int] = {
 
 UPSELL_PRICE: int = 149
 
+COD_FEE_SAR: int = 30
+
+PaymentMethod = str  # stripe | tabby | tamara | cod
+
 VALID_PRODUCTS: frozenset[str] = frozenset(
     {"magnesium_gummies", "saffron_gummies", "mushroom_coffee"}
 )
@@ -115,9 +119,18 @@ def validate_upsell_price(price: int) -> bool:
     return price == UPSELL_PRICE
 
 
-def calculate_total(items: list[OrderItemRequest]) -> int:  # type: ignore[type-arg]
+def calculate_subtotal(items: list[OrderItemRequest]) -> int:  # type: ignore[type-arg]
     """Sum all item prices. Prices have already been validated server-side."""
     return sum(item.price_sar for item in items)
+
+
+def calculate_cod_fee(payment_method: str) -> int:
+    return COD_FEE_SAR if payment_method == "cod" else 0
+
+
+def calculate_total(items: list[OrderItemRequest], payment_method: str = "") -> int:  # type: ignore[type-arg]
+    """Subtotal plus COD fee when payment_method is cod."""
+    return calculate_subtotal(items) + calculate_cod_fee(payment_method)
 
 
 CATALOG_PRODUCT_ORDER: list[str] = [

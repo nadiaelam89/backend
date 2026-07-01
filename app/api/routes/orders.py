@@ -13,6 +13,7 @@ from app.schemas.orders import (
     CreateOrderResponse,
     EligibleUpsell,
     OrderSummaryResponse,
+    PaymentStatusResponse,
     UpsellRequest,
     UpsellResponse,
 )
@@ -20,6 +21,7 @@ from app.services.order_service import (
     add_upsell,
     create_order,
     get_order_summary,
+    get_payment_status,
     run_order_side_effects,
     run_upsell_side_effects,
 )
@@ -66,6 +68,10 @@ async def create_order_endpoint(
         order_id=order.order_number,
         event_id=order_data.event_id,
         total_sar=order.total_sar,
+        subtotal_sar=order.subtotal_sar,
+        cod_fee_sar=order.cod_fee_sar,
+        payment_method=order.payment_method,  # type: ignore[arg-type]
+        payment_status=order.payment_status,
         eligible_upsell=eligible_upsell,
         eligible_upsells=eligible_upsells,
     )
@@ -93,3 +99,12 @@ async def order_summary_endpoint(
 ) -> OrderSummaryResponse:
     summary = await get_order_summary(db, order_id)
     return OrderSummaryResponse(**summary)
+
+
+@router.get("/{order_id}/payment-status", response_model=PaymentStatusResponse)
+async def payment_status_endpoint(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> PaymentStatusResponse:
+    status_data = await get_payment_status(db, order_id)
+    return PaymentStatusResponse(**status_data)

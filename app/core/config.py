@@ -39,6 +39,20 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str = ""
     ADMIN_SESSION_SECRET: str = ""
 
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+
+    TABBY_SECRET_KEY: str = ""
+    TABBY_MERCHANT_CODE: str = ""
+
+    TAMARA_API_TOKEN: str = ""
+    TAMARA_NOTIFICATION_TOKEN: str = ""
+    TAMARA_API_URL: str = "https://api-sandbox.tamara.co"
+
+    COD_FEE_SAR: int = 30
+    SITE_URL: str = "https://sukoonhealth.shop"
+    API_PUBLIC_URL: str = "https://api.sukoonhealth.shop"
+
     @field_validator("APP_ENV")
     @classmethod
     def validate_env(cls, v: str) -> str:

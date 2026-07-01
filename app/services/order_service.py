@@ -21,6 +21,8 @@ from app.services.pricing import (
     PRODUCT_NAMES_AR,
     PRODUCT_SLUGS,
     UPSELL_PRICE,
+    calculate_cod_fee,
+    calculate_subtotal,
     calculate_total,
     canonical_product_id,
     resolve_bundle_product_ids,
@@ -103,7 +105,22 @@ async def create_order(
     await assert_order_ip_allowed(order_data, phone_result, client_ip, client_country)
 
     # 4. Compute server-side total
-    total = calculate_total(order_data.items)
+    payment_method = order_data.payment_method
+    if payment_method == "cod":
+        if len(order_data.city.strip()) < 2 or len(order_data.address.strip()) < 5:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="City and address are required for checkout",
+            )
+    elif payment_method != "cod":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Online payments must use /api/payments endpoints",
+        )
+
+    subtotal = calculate_subtotal(order_data.items)
+    cod_fee = calculate_cod_fee(payment_method)
+    total = subtotal + cod_fee
 
     # 5. Generate order number
     order_number = await _generate_order_number(db)
@@ -118,9 +135,15 @@ async def create_order(
         phone_e164=phone_result.phone_e164,
         phone_hash_sha256=phone_hash,
         currency=order_data.currency,
-        subtotal_sar=total,
+        subtotal_sar=subtotal,
         delivery_fee_sar=0,
+        cod_fee_sar=cod_fee,
         total_sar=total,
+        payment_method=payment_method,
+        payment_status="pending_confirmation",
+        city=order_data.city.strip() or None,
+        address=order_data.address.strip() or None,
+        customer_email=order_data.email,
         source_url=order_data.source_url,
         utm=order_data.utm.model_dump(exclude_none=True) if order_data.utm else None,
         event_id=str(order_data.event_id),
@@ -344,10 +367,40 @@ async def get_order_summary(db: AsyncSession, order_id: str) -> dict:
         "ok": True,
         "order_id": order.order_number,
         "status": order.status,
+        "payment_status": order.payment_status,
+        "payment_method": order.payment_method,
         "total_sar": order.total_sar,
         "product_names": product_names,
         "items": items,
     }
+
+
+async def get_payment_status(db: AsyncSession, order_id: str) -> dict:
+    order = await _get_order_or_404(db, order_id)
+    return {
+        "ok": True,
+        "order_id": order.order_number,
+        "payment_status": order.payment_status,
+        "payment_method": order.payment_method,
+        "total_sar": order.total_sar,
+    }
+
+
+async def mark_order_paid(db: AsyncSession, order_number: str) -> Order | None:
+    result = await db.execute(
+        select(Order)
+        .options(selectinload(Order.items))
+        .where(Order.order_number == order_number)
+    )
+    order = result.scalar_one_or_none()
+    if order is None:
+        return None
+    if order.payment_status == "paid":
+        return order
+    order.payment_status = "paid"
+    order.status = "paid"
+    await db.flush()
+    return order
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.services.pricing import ACCEPTED_PRODUCT_IDS, VALID_PRODUCTS, canonical_product_id
 
+PaymentMethodType = Literal["stripe", "tabby", "tamara", "cod"]
+
 
 # ---------------------------------------------------------------------------
 # Sub-schemas
@@ -49,6 +51,10 @@ class OrderItemRequest(BaseModel):
 class CreateOrderRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=80)
     phone: str = Field(..., description="Saudi phone number in any accepted format")
+    city: str = Field(default="", max_length=60)
+    address: str = Field(default="", max_length=200)
+    email: str | None = Field(default=None, max_length=120)
+    payment_method: PaymentMethodType = "cod"
     items: list[OrderItemRequest] = Field(..., min_length=1)
     currency: Literal["SAR"] = "SAR"
     source_url: str | None = None
@@ -58,6 +64,11 @@ class CreateOrderRequest(BaseModel):
     fbc: str | None = None
     ttp: str | None = None
     client_user_agent: str | None = None
+
+    @field_validator("city", "address")
+    @classmethod
+    def validate_address_for_checkout(cls, v: str, info) -> str:
+        return v.strip()
 
 
 class UpsellRequest(BaseModel):
@@ -89,8 +100,20 @@ class CreateOrderResponse(BaseModel):
     order_id: str
     event_id: UUID
     total_sar: int
+    subtotal_sar: int = 0
+    cod_fee_sar: int = 0
+    payment_method: PaymentMethodType = "cod"
+    payment_status: str = "pending_confirmation"
     eligible_upsell: EligibleUpsell | None = None
     eligible_upsells: list[EligibleUpsell] = Field(default_factory=list)
+
+
+class PaymentStatusResponse(BaseModel):
+    ok: bool = True
+    order_id: str
+    payment_status: str
+    payment_method: PaymentMethodType
+    total_sar: int
 
 
 class UpsellResponse(BaseModel):

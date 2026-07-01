@@ -33,7 +33,21 @@ class Order(Base):
     currency: Mapped[str] = mapped_column(Text, nullable=False, default="SAR")
     subtotal_sar: Mapped[int] = mapped_column(Integer, nullable=False)
     delivery_fee_sar: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cod_fee_sar: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_sar: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    payment_method: Mapped[str] = mapped_column(Text, nullable=False, default="cod")
+    payment_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending_confirmation")
+
+    city: Mapped[str | None] = mapped_column(Text, nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    customer_email: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tabby_payment_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tabby_session_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tamara_order_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tamara_checkout_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     utm: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
