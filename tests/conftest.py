@@ -97,6 +97,7 @@ def _setup_default_mocks(mock_create: Any, mock_upsell: Any, mock_summary: Any) 
     mock_summary.return_value = {
         "ok": True,
         "order_id": "SH-20260625-000001",
+        "event_id": str(uuid.uuid4()),
         "status": "new",
         "total_sar": 449,
         "product_names": ["علكة المغنيسيوم جلايسينات 400 ملغ"],

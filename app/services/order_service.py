@@ -366,6 +366,7 @@ async def get_order_summary(db: AsyncSession, order_id: str) -> dict:
     return {
         "ok": True,
         "order_id": order.order_number,
+        "event_id": order.event_id,
         "status": order.status,
         "payment_status": order.payment_status,
         "payment_method": order.payment_method,

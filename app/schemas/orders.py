@@ -132,6 +132,7 @@ class OrderSummaryItem(BaseModel):
 class OrderSummaryResponse(BaseModel):
     ok: bool = True
     order_id: str
+    event_id: str
     status: str
     total_sar: int
     product_names: list[str]
