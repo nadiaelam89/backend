@@ -107,11 +107,7 @@ async def create_order(
     # 4. Compute server-side total
     payment_method = order_data.payment_method
     if payment_method == "cod":
-        if len(order_data.city.strip()) < 2 or len(order_data.address.strip()) < 5:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="City and address are required for checkout",
-            )
+        pass  # city/address optional — confirmed on confirmation call for popup checkout
     elif payment_method != "cod":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
