@@ -77,6 +77,12 @@ def _resolve_offer_quantity(offer_id: str, offer_quantity: int) -> int:
         return 3
     if offer_id.endswith("_bundle_1"):
         return 2
+    if offer_id.endswith("_3"):
+        return 3
+    if offer_id.endswith("_2"):
+        return 2
+    if offer_id.endswith("_1"):
+        return 1
     return offer_quantity
 
 
