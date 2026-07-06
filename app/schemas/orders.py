@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.services.pricing import ACCEPTED_PRODUCT_IDS, VALID_PRODUCTS, canonical_product_id
 
-PaymentMethodType = Literal["stripe", "tabby", "tamara", "cod"]
+PaymentMethodType = Literal["cod"]
 
 
 # ---------------------------------------------------------------------------

@@ -90,6 +90,8 @@ def _setup_default_mocks(mock_create: Any, mock_upsell: Any, mock_summary: Any) 
     fake_order.order_number = "SH-20260625-000001"
     fake_order.total_sar = 449
     fake_order.status = "new"
+    fake_order.payment_method = "cod"
+    fake_order.payment_status = "pending_confirmation"
     fake_order.items = [fake_item]
 
     mock_create.return_value = fake_order
@@ -121,6 +123,9 @@ def valid_order_payload(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "name": "أحمد العمري",
         "phone": "0512345678",
+        "city": "الرياض",
+        "address": "حي النخيل، شارع الملك فهد",
+        "payment_method": "cod",
         "items": [
             {
                 "product_id": "magnesium_gummies",

@@ -134,9 +134,9 @@ def test_calculate_total_empty() -> None:
 def test_calculate_cod_fee() -> None:
     items = [_make_item(199)]
     assert calculate_cod_fee("cod") == COD_FEE_SAR
-    assert calculate_cod_fee("stripe") == 0
+    assert calculate_cod_fee("online") == 0
     assert calculate_total(items, "cod") == 199 + COD_FEE_SAR
-    assert calculate_total(items, "stripe") == 199
+    assert calculate_total(items, "online") == 199
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ UPSELL_PRICE: int = 149
 
 COD_FEE_SAR: int = 30
 
-PaymentMethod = str  # stripe | tabby | tamara | cod
+PaymentMethod = str  # cod (legacy orders may have other values in DB)
 
 VALID_PRODUCTS: frozenset[str] = frozenset(
     {"magnesium_gummies", "saffron_gummies", "mushroom_coffee"}

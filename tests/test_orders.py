@@ -228,8 +228,10 @@ async def test_sheets_failure_does_not_fail_order() -> None:
     fake_order.total_sar = 449
     fake_order.subtotal_sar = 449
     fake_order.status = "new"
+    fake_order.payment_method = "cod"
+    fake_order.payment_status = "pending_confirmation"
+    fake_order.cod_fee_sar = 30
     fake_order.items = [fake_item]
-    fake_order.event_id = str(uuid.uuid4())
     fake_order.fbp = None
     fake_order.fbc = None
     fake_order.ttp = None
@@ -280,7 +282,11 @@ async def test_capi_failure_does_not_fail_order() -> None:
     fake_order = MagicMock(spec=Order)
     fake_order.order_number = "SH-20260625-000002"
     fake_order.total_sar = 199
+    fake_order.subtotal_sar = 199
+    fake_order.cod_fee_sar = 0
     fake_order.status = "new"
+    fake_order.payment_method = "cod"
+    fake_order.payment_status = "pending_confirmation"
     fake_order.items = [fake_item]
 
     async def _override_get_db():
