@@ -13,7 +13,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.routes import admin, events, health, orders, payments, public
+from app.api.routes import admin, events, health, orders, payments, public, redirects
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.models import Base
@@ -88,7 +88,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -99,6 +99,8 @@ app.include_router(orders.router)
 app.include_router(payments.router)
 app.include_router(events.router)
 app.include_router(admin.router)
+app.include_router(redirects.public_router)
+app.include_router(redirects.admin_router)
 
 
 @app.exception_handler(RequestValidationError)

@@ -50,6 +50,7 @@ def build_order_sheet_row(order: Order) -> dict[str, object]:
         "totalprice": order.total_sar,
         "currency": "SAR",
         "status": order.status or "",
+        "url": order.source_url or "",
     }
 
 
