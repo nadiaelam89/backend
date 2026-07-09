@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "0004_ad_redirects"
 down_revision = "0003_checkout_v2"
@@ -16,9 +17,14 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "ad_redirects" in inspector.get_table_names():
+        return
+
     op.create_table(
         "ad_redirects",
-        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("slug", sa.Text(), nullable=False),
         sa.Column("target_path", sa.Text(), nullable=False),
         sa.Column(
@@ -40,5 +46,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "ad_redirects" not in inspector.get_table_names():
+        return
+
     op.drop_index("ix_ad_redirects_slug", table_name="ad_redirects")
     op.drop_table("ad_redirects")
