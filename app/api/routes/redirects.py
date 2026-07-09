@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -111,10 +111,15 @@ async def redirect_admin_update(
     )
 
 
-@admin_router.delete("/redirects/{redirect_id}", status_code=status.HTTP_204_NO_CONTENT)
+@admin_router.delete(
+    "/redirects/{redirect_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 async def redirect_admin_delete(
     redirect_id: UUID,
     _: Annotated[None, Depends(require_redirect_admin)],
     db: AsyncSession = Depends(get_db),
-) -> None:
+) -> Response:
     await delete_redirect(db, redirect_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
