@@ -61,7 +61,9 @@ async def get_redirect_by_slug(db: AsyncSession, slug: str) -> AdRedirect | None
     return result.scalar_one_or_none()
 
 
-async def create_redirect(db: AsyncSession, slug: str, target_path: str) -> AdRedirect:
+async def create_redirect(
+    db: AsyncSession, slug: str, target_path: str, comment: str | None = None
+) -> AdRedirect:
     normalized_slug = normalize_slug(slug)
     validated_path = validate_target_path(target_path)
 
@@ -76,6 +78,7 @@ async def create_redirect(db: AsyncSession, slug: str, target_path: str) -> AdRe
         id=uuid.uuid4(),
         slug=normalized_slug,
         target_path=validated_path,
+        comment=comment,
     )
     db.add(redirect)
     await db.commit()
@@ -83,7 +86,9 @@ async def create_redirect(db: AsyncSession, slug: str, target_path: str) -> AdRe
     return redirect
 
 
-async def update_redirect(db: AsyncSession, redirect_id: uuid.UUID, target_path: str) -> AdRedirect:
+async def update_redirect(
+    db: AsyncSession, redirect_id: uuid.UUID, target_path: str, comment: str | None = None
+) -> AdRedirect:
     validated_path = validate_target_path(target_path)
     result = await db.execute(select(AdRedirect).where(AdRedirect.id == redirect_id))
     redirect = result.scalar_one_or_none()
@@ -91,6 +96,7 @@ async def update_redirect(db: AsyncSession, redirect_id: uuid.UUID, target_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Redirect not found")
 
     redirect.target_path = validated_path
+    redirect.comment = comment
     redirect.updated_at = datetime.now(tz=timezone.utc)
     await db.commit()
     await db.refresh(redirect)

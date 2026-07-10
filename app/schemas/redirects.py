@@ -20,9 +20,17 @@ class RedirectLoginResponse(BaseModel):
     expires_in: int
 
 
+def _normalize_comment(value: str | None) -> str | None:
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
 class RedirectCreateRequest(BaseModel):
     slug: str = Field(min_length=1, max_length=64)
     target_path: str = Field(min_length=1, max_length=500)
+    comment: str | None = Field(default=None, max_length=500)
 
     @field_validator("slug")
     @classmethod
@@ -40,9 +48,15 @@ class RedirectCreateRequest(BaseModel):
             raise ValueError("Target path is not allowed")
         return path
 
+    @field_validator("comment")
+    @classmethod
+    def validate_comment(cls, value: str | None) -> str | None:
+        return _normalize_comment(value)
+
 
 class RedirectUpdateRequest(BaseModel):
     target_path: str = Field(min_length=1, max_length=500)
+    comment: str | None = Field(default=None, max_length=500)
 
     @field_validator("target_path")
     @classmethod
@@ -52,11 +66,17 @@ class RedirectUpdateRequest(BaseModel):
             raise ValueError("Target path is not allowed")
         return path
 
+    @field_validator("comment")
+    @classmethod
+    def validate_comment(cls, value: str | None) -> str | None:
+        return _normalize_comment(value)
+
 
 class RedirectResponse(BaseModel):
     id: UUID
     slug: str
     target_path: str
+    comment: str | None = None
     created_at: datetime
     updated_at: datetime
 

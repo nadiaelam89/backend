@@ -70,6 +70,7 @@ async def redirect_admin_list(
                 id=item.id,
                 slug=item.slug,
                 target_path=item.target_path,
+                comment=item.comment,
                 created_at=item.created_at,
                 updated_at=item.updated_at,
             )
@@ -84,11 +85,12 @@ async def redirect_admin_create(
     _: Annotated[None, Depends(require_redirect_admin)],
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
-    redirect = await create_redirect(db, payload.slug, payload.target_path)
+    redirect = await create_redirect(db, payload.slug, payload.target_path, payload.comment)
     return RedirectResponse(
         id=redirect.id,
         slug=redirect.slug,
         target_path=redirect.target_path,
+        comment=redirect.comment,
         created_at=redirect.created_at,
         updated_at=redirect.updated_at,
     )
@@ -101,11 +103,12 @@ async def redirect_admin_update(
     _: Annotated[None, Depends(require_redirect_admin)],
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
-    redirect = await update_redirect(db, redirect_id, payload.target_path)
+    redirect = await update_redirect(db, redirect_id, payload.target_path, payload.comment)
     return RedirectResponse(
         id=redirect.id,
         slug=redirect.slug,
         target_path=redirect.target_path,
+        comment=redirect.comment,
         created_at=redirect.created_at,
         updated_at=redirect.updated_at,
     )
