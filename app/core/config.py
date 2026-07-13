@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     REDIRECT_ADMIN_PASSWORD: str = ""
     REDIRECT_SESSION_SECRET: str = ""
 
-    COD_FEE_SAR: int = 30
+    COD_FEE_SAR: int = 0
     SITE_URL: str = "https://sukoonhealth.shop"
     API_PUBLIC_URL: str = "https://api.sukoonhealth.shop"
 

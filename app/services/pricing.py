@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from app.core.config import settings
+
 if TYPE_CHECKING:
     from app.schemas.orders import OrderItemRequest
 
@@ -16,8 +18,6 @@ STANDARD_PRICES: dict[int, int] = {
 }
 
 UPSELL_PRICE: int = 149
-
-COD_FEE_SAR: int = 30
 
 PaymentMethod = str  # cod (legacy orders may have other values in DB)
 
@@ -131,7 +131,7 @@ def calculate_subtotal(items: list[OrderItemRequest]) -> int:  # type: ignore[ty
 
 
 def calculate_cod_fee(payment_method: str) -> int:
-    return COD_FEE_SAR if payment_method == "cod" else 0
+    return settings.COD_FEE_SAR if payment_method == "cod" else 0
 
 
 def calculate_total(items: list[OrderItemRequest], payment_method: str = "") -> int:  # type: ignore[type-arg]
