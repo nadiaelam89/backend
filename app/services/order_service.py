@@ -25,6 +25,7 @@ from app.services.pricing import (
     calculate_subtotal,
     calculate_total,
     canonical_product_id,
+    get_eligible_upsells,
     resolve_bundle_product_ids,
     validate_item_price,
     validate_upsell_price,
@@ -305,6 +306,12 @@ async def add_upsell(
     # Check this product isn't already in the order
     existing_pids = {canonical_product_id(item.product_id) for item in order.items}
     upsell_pid = canonical_product_id(upsell_data.product_id)
+    eligible_pids = get_eligible_upsells([item.product_id for item in order.items])
+    if upsell_pid not in eligible_pids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Product '{upsell_data.product_id}' is not eligible for upsell on order {order_id}",
+        )
     if upsell_pid in existing_pids:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -359,6 +366,7 @@ async def get_order_summary(db: AsyncSession, order_id: str) -> dict:
         for item in order.items
     ]
     product_names = [item.name_ar for item in order.items]
+    eligible_upsell_product_ids = get_eligible_upsells([item.product_id for item in order.items])
     return {
         "ok": True,
         "order_id": order.order_number,
@@ -369,6 +377,7 @@ async def get_order_summary(db: AsyncSession, order_id: str) -> dict:
         "total_sar": order.total_sar,
         "product_names": product_names,
         "items": items,
+        "eligible_upsell_product_ids": eligible_upsell_product_ids,
     }
 
 

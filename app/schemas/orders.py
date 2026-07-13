@@ -137,3 +137,4 @@ class OrderSummaryResponse(BaseModel):
     total_sar: int
     product_names: list[str]
     items: list[OrderSummaryItem] = Field(default_factory=list)
+    eligible_upsell_product_ids: list[str] = Field(default_factory=list)

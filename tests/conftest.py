@@ -111,6 +111,7 @@ def _setup_default_mocks(mock_create: Any, mock_upsell: Any, mock_summary: Any) 
                 "quantity": 3,
             }
         ],
+        "eligible_upsell_product_ids": ["saffron_gummies", "mushroom_coffee"],
     }
 
 
