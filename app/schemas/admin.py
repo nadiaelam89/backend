@@ -68,6 +68,11 @@ class AdminOrdersListResponse(BaseModel):
     orders: list[AdminOrderListItem]
 
 
+class AdminPurgeDataResponse(BaseModel):
+    ok: bool = True
+    deleted: dict[str, int]
+
+
 class AdminOrderDetailResponse(BaseModel):
     ok: bool = True
     order_id: str

@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import datetime, time, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import Order, OrderItem, SiteEvent
+from app.db.models import AnalyticsEvent, Order, OrderItem, SiteEvent
 from app.schemas.admin import (
     AdminMetricsResponse,
     AdminOrderDetailResponse,
@@ -68,6 +68,21 @@ async def _count_unique_sessions(
         )
     )
     return int(result.scalar_one())
+
+
+async def purge_all_data(db: AsyncSession) -> dict[str, int]:
+    """Delete all orders and tracking events. Irreversible."""
+    deleted: dict[str, int] = {}
+    for label, stmt in [
+        ("analytics_events", delete(AnalyticsEvent)),
+        ("order_items", delete(OrderItem)),
+        ("site_events", delete(SiteEvent)),
+        ("orders", delete(Order)),
+    ]:
+        result = await db.execute(stmt)
+        deleted[label] = int(result.rowcount or 0)
+    await db.commit()
+    return deleted
 
 
 async def get_admin_metrics(

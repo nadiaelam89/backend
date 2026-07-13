@@ -13,9 +13,15 @@ from app.schemas.admin import (
     AdminMetricsResponse,
     AdminOrderDetailResponse,
     AdminOrdersListResponse,
+    AdminPurgeDataResponse,
 )
 from app.services.admin_auth import TOKEN_TTL_SECONDS, authenticate_admin, verify_admin_token
-from app.services.admin_service import get_admin_metrics, get_admin_order_detail, list_admin_orders
+from app.services.admin_service import (
+    get_admin_metrics,
+    get_admin_order_detail,
+    list_admin_orders,
+    purge_all_data,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
@@ -59,6 +65,15 @@ async def admin_orders(
     date_to: datetime | None = Query(default=None),
 ) -> AdminOrdersListResponse:
     return await list_admin_orders(db, page, page_size, status, search, date_from, date_to)
+
+
+@router.post("/purge-data", response_model=AdminPurgeDataResponse)
+async def admin_purge_data(
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+) -> AdminPurgeDataResponse:
+    deleted = await purge_all_data(db)
+    return AdminPurgeDataResponse(deleted=deleted)
 
 
 @router.get("/orders/{order_id}", response_model=AdminOrderDetailResponse)
