@@ -29,6 +29,7 @@ class AdminMetricsResponse(BaseModel):
     upsells: int
     revenue_sar: int
     average_order_value_sar: float
+    average_pieces_per_order: float
     conversion_rate: float
     checkout_conversion_rate: float
     unique_sessions: int

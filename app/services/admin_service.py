@@ -141,6 +141,22 @@ async def get_admin_metrics(
     )
     upsells = int(upsells_result.scalar_one())
 
+    order_pieces = (
+        select(
+            Order.id.label("order_id"),
+            func.sum(OrderItem.offer_quantity).label("pieces"),
+        )
+        .select_from(Order)
+        .join(OrderItem, OrderItem.order_id == Order.id)
+        .where(Order.created_at >= start, Order.created_at <= end)
+        .group_by(Order.id)
+        .subquery()
+    )
+    avg_pieces_result = await db.execute(
+        select(func.coalesce(func.avg(order_pieces.c.pieces), 0)).select_from(order_pieces)
+    )
+    average_pieces = round(float(avg_pieces_result.scalar_one() or 0), 2)
+
     conversion_rate = round((orders_count / unique_sessions) * 100, 2) if unique_sessions else 0.0
     checkout_conversion_rate = (
         round((orders_count / initiate_checkouts) * 100, 2) if initiate_checkouts else 0.0
@@ -158,6 +174,7 @@ async def get_admin_metrics(
         upsells=upsells,
         revenue_sar=revenue_sar,
         average_order_value_sar=average_order_value,
+        average_pieces_per_order=average_pieces,
         conversion_rate=conversion_rate,
         checkout_conversion_rate=checkout_conversion_rate,
         unique_sessions=unique_sessions,
