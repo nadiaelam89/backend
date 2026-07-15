@@ -192,11 +192,13 @@ async def list_admin_orders(
     date_from: datetime | None,
     date_to: datetime | None,
 ) -> AdminOrdersListResponse:
-    start, end = _parse_range(date_from, date_to)
     page = max(page, 1)
     page_size = min(max(page_size, 1), 100)
 
-    filters = [Order.created_at >= start, Order.created_at <= end]
+    filters: list = []
+    if date_from is not None or date_to is not None:
+        start, end = _parse_range(date_from, date_to)
+        filters.extend([Order.created_at >= start, Order.created_at <= end])
     if status_filter:
         filters.append(Order.status == status_filter)
     if search:
