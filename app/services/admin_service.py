@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import datetime, time, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import Date, cast, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models import AnalyticsEvent, Order, OrderItem, SiteEvent
 from app.schemas.admin import (
+    AdminChannelRevenueItem,
+    AdminDailyTrendItem,
     AdminMetricsResponse,
     AdminOrderDetailResponse,
     AdminOrderItem,
@@ -141,6 +143,66 @@ async def get_admin_metrics(
     )
     upsells = int(upsells_result.scalar_one())
 
+    upsell_orders_result = await db.execute(
+        select(func.count(func.distinct(Order.id)))
+        .select_from(OrderItem)
+        .join(Order, OrderItem.order_id == Order.id)
+        .where(
+            OrderItem.added_from == "upsell",
+            Order.created_at >= start,
+            Order.created_at <= end,
+        )
+    )
+    upsell_orders = int(upsell_orders_result.scalar_one())
+    upsell_take_rate = round((upsell_orders / orders_count) * 100, 2) if orders_count else 0.0
+
+    daily_result = await db.execute(
+        select(
+            cast(Order.created_at, Date).label("day"),
+            func.count().label("orders"),
+            func.coalesce(func.sum(Order.total_sar), 0).label("revenue"),
+        )
+        .select_from(Order)
+        .where(Order.created_at >= start, Order.created_at <= end)
+        .group_by(cast(Order.created_at, Date))
+        .order_by(cast(Order.created_at, Date))
+    )
+    daily_trend = [
+        AdminDailyTrendItem(
+            date=row.day.isoformat(),
+            orders=int(row.orders),
+            revenue_sar=int(row.revenue or 0),
+        )
+        for row in daily_result.all()
+    ]
+
+    channel_rows = await db.execute(
+        select(Order.utm, Order.total_sar)
+        .select_from(Order)
+        .where(Order.created_at >= start, Order.created_at <= end)
+    )
+    channel_totals: dict[str, dict[str, int]] = {}
+    for utm, total_sar in channel_rows.all():
+        channel = "direct"
+        if isinstance(utm, dict):
+            source = utm.get("utm_source")
+            if source:
+                channel = str(source).strip().lower() or "direct"
+        bucket = channel_totals.setdefault(channel, {"orders": 0, "revenue_sar": 0})
+        bucket["orders"] += 1
+        bucket["revenue_sar"] += int(total_sar or 0)
+
+    channel_revenue = [
+        AdminChannelRevenueItem(
+            channel=channel,
+            orders=values["orders"],
+            revenue_sar=values["revenue_sar"],
+        )
+        for channel, values in sorted(
+            channel_totals.items(), key=lambda item: item[1]["revenue_sar"], reverse=True
+        )
+    ]
+
     order_pieces = (
         select(
             Order.id.label("order_id"),
@@ -172,6 +234,7 @@ async def get_admin_metrics(
         initiate_checkouts=initiate_checkouts,
         orders=orders_count,
         upsells=upsells,
+        upsell_take_rate=upsell_take_rate,
         revenue_sar=revenue_sar,
         average_order_value_sar=average_order_value,
         average_pieces_per_order=average_pieces,
@@ -180,6 +243,8 @@ async def get_admin_metrics(
         unique_sessions=unique_sessions,
         blocked_events=blocked_events,
         valid_events=valid_events,
+        daily_trend=daily_trend,
+        channel_revenue=channel_revenue,
     )
 
 

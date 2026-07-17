@@ -17,6 +17,18 @@ class AdminLoginResponse(BaseModel):
     expires_in: int
 
 
+class AdminDailyTrendItem(BaseModel):
+    date: str
+    orders: int
+    revenue_sar: int
+
+
+class AdminChannelRevenueItem(BaseModel):
+    channel: str
+    orders: int
+    revenue_sar: int
+
+
 class AdminMetricsResponse(BaseModel):
     ok: bool = True
     date_from: datetime
@@ -27,6 +39,7 @@ class AdminMetricsResponse(BaseModel):
     initiate_checkouts: int
     orders: int
     upsells: int
+    upsell_take_rate: float
     revenue_sar: int
     average_order_value_sar: float
     average_pieces_per_order: float
@@ -35,6 +48,8 @@ class AdminMetricsResponse(BaseModel):
     unique_sessions: int
     blocked_events: int
     valid_events: int
+    daily_trend: list[AdminDailyTrendItem]
+    channel_revenue: list[AdminChannelRevenueItem]
 
 
 class AdminOrderItem(BaseModel):
