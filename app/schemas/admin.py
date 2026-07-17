@@ -48,6 +48,8 @@ class AdminMetricsResponse(BaseModel):
     unique_sessions: int
     blocked_events: int
     valid_events: int
+    last_event_at: datetime | None = None
+    latest_event_at: datetime | None = None
     daily_trend: list[AdminDailyTrendItem]
     channel_revenue: list[AdminChannelRevenueItem]
 

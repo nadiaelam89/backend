@@ -122,6 +122,17 @@ async def get_admin_metrics(
     )
     valid_events = int(valid_result.scalar_one())
 
+    last_in_range_result = await db.execute(
+        select(func.max(SiteEvent.created_at)).select_from(SiteEvent).where(
+            SiteEvent.created_at >= start,
+            SiteEvent.created_at <= end,
+        )
+    )
+    last_event_at = last_in_range_result.scalar_one()
+
+    latest_result = await db.execute(select(func.max(SiteEvent.created_at)).select_from(SiteEvent))
+    latest_event_at = latest_result.scalar_one()
+
     orders_result = await db.execute(
         select(func.count(), func.coalesce(func.sum(Order.total_sar), 0))
         .select_from(Order)
@@ -243,6 +254,8 @@ async def get_admin_metrics(
         unique_sessions=unique_sessions,
         blocked_events=blocked_events,
         valid_events=valid_events,
+        last_event_at=last_event_at,
+        latest_event_at=latest_event_at,
         daily_trend=daily_trend,
         channel_revenue=channel_revenue,
     )
