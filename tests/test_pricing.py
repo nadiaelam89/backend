@@ -30,12 +30,14 @@ from app.services.pricing import (
         ("magnesium_gummies", 1, 199, True),
         ("magnesium_gummies", 2, 349, True),
         ("magnesium_gummies", 3, 449, True),
+        ("magnesium_gummies", 4, 499, True),
         ("saffron_gummies", 1, 199, True),
         ("saffron_gummies", 2, 349, True),
         ("saffron_gummies", 3, 449, True),
         ("mushroom_coffee", 1, 199, True),
         ("mushroom_coffee", 2, 349, True),
         ("mushroom_coffee", 3, 449, True),
+        ("probiotic_gummies", 4, 499, True),
     ],
 )
 def test_valid_item_prices(product_id: str, qty: int, price: int, expected: bool) -> None:
@@ -53,7 +55,7 @@ def test_valid_item_prices(product_id: str, qty: int, price: int, expected: bool
         ("magnesium_gummies", 3, 0, "zero price"),
         ("magnesium_gummies", 3, -449, "negative price"),
         ("unknown_product", 1, 199, "unknown product"),
-        ("magnesium_gummies", 4, 199, "quantity 4 is not in price table"),
+        ("magnesium_gummies", 5, 199, "quantity 5 is not in price table"),
         ("magnesium_gummies", 0, 199, "quantity 0 is invalid"),
     ],
 )
@@ -69,7 +71,9 @@ def test_tampered_item_prices(
     [
         ("magnesium_gummies", "magnesium_gummies_bundle_1", 1, 349),
         ("magnesium_gummies", "magnesium_gummies_bundle_2", 1, 449),
+        ("magnesium_gummies", "magnesium_gummies_bundle_3", 1, 499),
         ("saffron_gummies", "saffron_gummies_bundle_1", 1, 349),
+        ("probiotic_gummies", "probiotic_gummies_bundle_3", 1, 499),
     ],
 )
 def test_bundle_offer_ids_resolve_quantity(
@@ -179,7 +183,8 @@ def test_valid_products_set() -> None:
     assert "magnesium_gummies" in VALID_PRODUCTS
     assert "saffron_gummies" in VALID_PRODUCTS
     assert "mushroom_coffee" in VALID_PRODUCTS
-    assert len(VALID_PRODUCTS) == 3
+    assert "probiotic_gummies" in VALID_PRODUCTS
+    assert len(VALID_PRODUCTS) == 4
 
 
 def test_resolve_bundle_product_ids() -> None:
@@ -192,3 +197,11 @@ def test_resolve_bundle_product_ids() -> None:
     assert resolve_bundle_product_ids(
         "sleep_gummies", "sleep_gummies_bundle_2"
     ) == ["magnesium_gummies", "saffron_gummies", "mushroom_coffee"]
+    assert resolve_bundle_product_ids(
+        "probiotic_gummies", "probiotic_gummies_bundle_3"
+    ) == [
+        "probiotic_gummies",
+        "magnesium_gummies",
+        "saffron_gummies",
+        "mushroom_coffee",
+    ]
