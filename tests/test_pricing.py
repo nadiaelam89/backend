@@ -13,6 +13,7 @@ from app.services.pricing import (
     canonical_product_id,
     get_eligible_upsell,
     get_eligible_upsells,
+    is_product_in_stock,
     resolve_bundle_product_ids,
     validate_item_price,
     validate_upsell_price,
@@ -37,7 +38,7 @@ from app.services.pricing import (
         ("mushroom_coffee", 1, 199, True),
         ("mushroom_coffee", 2, 349, True),
         ("mushroom_coffee", 3, 449, True),
-        ("probiotic_gummies", 4, 499, True),
+        ("probiotic_gummies", 4, 499, False),  # out of stock
     ],
 )
 def test_valid_item_prices(product_id: str, qty: int, price: int, expected: bool) -> None:
@@ -71,9 +72,7 @@ def test_tampered_item_prices(
     [
         ("magnesium_gummies", "magnesium_gummies_bundle_1", 1, 349),
         ("magnesium_gummies", "magnesium_gummies_bundle_2", 1, 449),
-        ("magnesium_gummies", "magnesium_gummies_bundle_3", 1, 499),
         ("saffron_gummies", "saffron_gummies_bundle_1", 1, 349),
-        ("probiotic_gummies", "probiotic_gummies_bundle_3", 1, 499),
     ],
 )
 def test_bundle_offer_ids_resolve_quantity(
@@ -84,7 +83,7 @@ def test_bundle_offer_ids_resolve_quantity(
 
 def test_bundle_offer_id_with_wrong_price_rejected() -> None:
     assert (
-        validate_item_price("magnesium_gummies", 1, 349, "magnesium_gummies_bundle_1")
+        validate_item_price("magnesium_gummies", 1, 199, "magnesium_gummies_bundle_1")
         is False
     )
 
@@ -187,6 +186,21 @@ def test_valid_products_set() -> None:
     assert len(VALID_PRODUCTS) == 4
 
 
+def test_out_of_stock_product_rejected() -> None:
+    assert validate_item_price("probiotic_gummies", 1, 199) is False
+    assert is_product_in_stock("probiotic_gummies") is False
+    assert is_product_in_stock("magnesium_gummies") is True
+
+
+def test_bundle_3_rejected_when_cross_sell_out_of_stock() -> None:
+    assert (
+        validate_item_price(
+            "magnesium_gummies", 1, 499, "magnesium_gummies_bundle_3"
+        )
+        is False
+    )
+
+
 def test_resolve_bundle_product_ids() -> None:
     assert resolve_bundle_product_ids("sleep_gummies", "sleep_gummies_1") == [
         "magnesium_gummies"
@@ -197,6 +211,10 @@ def test_resolve_bundle_product_ids() -> None:
     assert resolve_bundle_product_ids(
         "sleep_gummies", "sleep_gummies_bundle_2"
     ) == ["magnesium_gummies", "saffron_gummies", "mushroom_coffee"]
+    # bundle_3 needs 3 in-stock cross-sells; probiotic is OOS so falls back to primary
+    assert resolve_bundle_product_ids(
+        "magnesium_gummies", "magnesium_gummies_bundle_3"
+    ) == ["magnesium_gummies"]
     assert resolve_bundle_product_ids(
         "probiotic_gummies", "probiotic_gummies_bundle_3"
     ) == [

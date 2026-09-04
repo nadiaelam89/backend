@@ -26,6 +26,7 @@ from app.services.pricing import (
     calculate_total,
     canonical_product_id,
     get_eligible_upsells,
+    is_product_in_stock,
     resolve_bundle_product_ids,
     validate_item_price,
     validate_upsell_price,
@@ -85,8 +86,13 @@ async def create_order(
     masked = "****" + phone_result.phone_local[-4:]
     logger.info("Creating order for customer %s, phone %s", order_data.name, masked)
 
-    # 2. Server-side price validation for every item
+    # 2. Server-side stock + price validation for every item
     for item in order_data.items:
+        if not is_product_in_stock(item.product_id):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Product '{item.product_id}' is out of stock",
+            )
         if not validate_item_price(
             item.product_id,
             item.offer_quantity,

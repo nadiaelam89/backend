@@ -26,6 +26,9 @@ VALID_PRODUCTS: frozenset[str] = frozenset(
     {"magnesium_gummies", "saffron_gummies", "mushroom_coffee", "probiotic_gummies"}
 )
 
+# Products that remain in the catalog but cannot be sold right now.
+OUT_OF_STOCK_PRODUCTS: frozenset[str] = frozenset({"probiotic_gummies"})
+
 # Legacy product keys accepted from older storefront / API clients.
 LEGACY_PRODUCT_IDS: dict[str, str] = {
     "sleep_gummies": "magnesium_gummies",
@@ -101,10 +104,21 @@ def canonical_product_id(product_id: str) -> str:
     return LEGACY_PRODUCT_IDS.get(product_id, product_id)
 
 
+def is_product_in_stock(product_id: str) -> bool:
+    """Return True when the product may be sold."""
+    return canonical_product_id(product_id) not in OUT_OF_STOCK_PRODUCTS
+
+
+def available_cross_sell_ids(product_id: str) -> list[str]:
+    """Cross-sell ids for a product, excluding out-of-stock items."""
+    primary = canonical_product_id(product_id)
+    return [pid for pid in CROSS_SELL_IDS.get(primary, []) if is_product_in_stock(pid)]
+
+
 def resolve_bundle_product_ids(product_id: str, offer_id: str) -> list[str]:
     """Expand bundle offer lines into the distinct products the customer receives."""
     primary = canonical_product_id(product_id)
-    cross_sells = CROSS_SELL_IDS.get(primary, [])
+    cross_sells = available_cross_sell_ids(primary)
 
     if offer_id.endswith("_bundle_3") and len(cross_sells) >= 3:
         return [primary, cross_sells[0], cross_sells[1], cross_sells[2]]
@@ -125,11 +139,29 @@ def validate_item_price(
     product_id = canonical_product_id(product_id)
     if product_id not in VALID_PRODUCTS:
         return False
+    if not is_product_in_stock(product_id):
+        return False
+    if not _bundle_offer_is_fulfillable(product_id, offer_id):
+        return False
     quantity = _resolve_offer_quantity(offer_id, offer_quantity)
     expected = STANDARD_PRICES.get(quantity)
     if expected is None:
         return False
     return claimed_price == expected
+
+
+def _bundle_offer_is_fulfillable(product_id: str, offer_id: str) -> bool:
+    """Reject bundle tiers that cannot be built from in-stock cross-sells."""
+    if not offer_id:
+        return True
+    products = resolve_bundle_product_ids(product_id, offer_id)
+    if offer_id.endswith("_bundle_3"):
+        return len(products) == 4
+    if offer_id.endswith("_bundle_2"):
+        return len(products) == 3
+    if offer_id.endswith("_bundle_1"):
+        return len(products) == 2
+    return True
 
 
 def validate_upsell_price(price: int) -> bool:
@@ -160,9 +192,13 @@ CATALOG_PRODUCT_ORDER: list[str] = [
 
 
 def get_eligible_upsells(product_ids: list[str]) -> list[str]:
-    """Return products not already in the order (1 ordered → 2 upsells, 2 ordered → 1)."""
+    """Return in-stock products not already in the order."""
     unique = {canonical_product_id(pid) for pid in product_ids}
-    return [pid for pid in CATALOG_PRODUCT_ORDER if pid not in unique]
+    return [
+        pid
+        for pid in CATALOG_PRODUCT_ORDER
+        if pid not in unique and is_product_in_stock(pid)
+    ]
 
 
 def get_eligible_upsell(product_ids: list[str]) -> str | None:
