@@ -156,6 +156,21 @@ async def _ensure_presence_trail(
     )
     recording = result.scalar_one_or_none()
 
+    if recording is None and client_ip:
+        cutoff = now - timedelta(minutes=45)
+        by_ip = await db.execute(
+            select(SessionRecording)
+            .where(
+                SessionRecording.client_ip == client_ip,
+                SessionRecording.updated_at >= cutoff,
+            )
+            .order_by(SessionRecording.updated_at.desc())
+            .limit(1)
+        )
+        recording = by_ip.scalar_one_or_none()
+        if recording is not None:
+            recording.session_id = session_id
+
     if recording is None:
         recording = SessionRecording(
             id=uuid.uuid4(),
@@ -523,6 +538,23 @@ async def append_recording_chunk(
             .limit(1)
         )
         recording = result.scalar_one_or_none()
+
+    # Continue the same visitor trail if session id changed but IP is the same (storage blocked)
+    if recording is None and client_ip:
+        cutoff = now - timedelta(minutes=45)
+        result = await db.execute(
+            select(SessionRecording)
+            .where(
+                SessionRecording.client_ip == client_ip,
+                SessionRecording.updated_at >= cutoff,
+            )
+            .order_by(SessionRecording.updated_at.desc())
+            .limit(1)
+        )
+        recording = result.scalar_one_or_none()
+        if recording is not None:
+            # Keep using this recording; also remember the latest session id
+            recording.session_id = payload.session_id
 
     if recording is None:
         recording = _new_recording()
