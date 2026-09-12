@@ -31,7 +31,12 @@ from app.services.admin_service import (
     list_admin_orders,
     purge_all_data,
 )
-from app.services.live_ops_service import get_recording_detail, list_live_visitors, list_recordings
+from app.services.live_ops_service import (
+    get_or_create_visitor_recording,
+    get_recording_detail,
+    list_live_visitors,
+    list_recordings,
+)
 from app.services.whatsapp_service import (
     get_conversation_messages,
     list_conversations,
@@ -106,6 +111,16 @@ async def admin_live_visitors(
     db: AsyncSession = Depends(get_db),
 ) -> LiveVisitorsResponse:
     return await list_live_visitors(db)
+
+
+@router.get("/visitors/{session_id}/recording", response_model=RecordingDetailResponse)
+async def admin_visitor_recording(
+    session_id: str,
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+) -> RecordingDetailResponse:
+    """Watch a live visitor — finds or creates their session trail immediately."""
+    return await get_or_create_visitor_recording(db, session_id)
 
 
 @router.get("/recordings", response_model=RecordingsListResponse)

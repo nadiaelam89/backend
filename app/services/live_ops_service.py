@@ -79,8 +79,12 @@ async def upsert_visitor_heartbeat(
             client_user_agent=payload.client_user_agent,
             now=now,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("presence trail seed failed")
+        msg = str(exc).lower()
+        if "session_recording" in msg or "does not exist" in msg or "no such table" in msg:
+            raise
+        # Keep heartbeat alive even if trail write fails for other reasons
 
     return presence
 
@@ -93,9 +97,10 @@ async def _ensure_presence_trail(
     client_ip: str | None,
     client_country: str | None,
     client_user_agent: str | None,
-    now: datetime,
-) -> None:
-    """Append a throttled nav tick so live visitors always have a recording row."""
+    now: datetime | None = None,
+) -> str:
+    """Append a throttled nav tick so live visitors always have a recording row. Returns recording id."""
+    now = now or datetime.now(timezone.utc)
     result = await db.execute(
         select(SessionRecording)
         .where(SessionRecording.session_id == session_id)
@@ -128,14 +133,15 @@ async def _ensure_presence_trail(
         if (
             updated
             and page_path == recording.page_path
+            and recording.event_count > 0
             and (now - updated).total_seconds() < 8
         ):
-            return
+            return str(recording.id)
 
     if recording.event_count >= settings.RECORDING_MAX_EVENTS:
-        return
+        return str(recording.id)
     if recording.chunk_count >= settings.RECORDING_MAX_CHUNKS:
-        return
+        return str(recording.id)
 
     elapsed_ms = 0
     if recording.started_at is not None:
@@ -164,6 +170,60 @@ async def _ensure_presence_trail(
     recording.ended_at = None
     recording.updated_at = now
     await db.flush()
+    return str(recording.id)
+
+
+async def get_or_create_visitor_recording(
+    db: AsyncSession, session_id: str
+) -> RecordingDetailResponse:
+    """Used by admin Watch — always returns a recording for a live (or recent) session."""
+    now = datetime.now(timezone.utc)
+
+    # Prefer existing recording for this session
+    result = await db.execute(
+        select(SessionRecording)
+        .where(
+            SessionRecording.session_id == session_id,
+            SessionRecording.event_count > 0,
+        )
+        .order_by(SessionRecording.started_at.desc())
+        .limit(1)
+    )
+    existing = result.scalar_one_or_none()
+    if existing is not None:
+        return await get_recording_detail(db, str(existing.id))
+
+    # Fall back to presence row (guarantees Watch works for anyone showing as live)
+    presence_result = await db.execute(
+        select(VisitorPresence).where(VisitorPresence.session_id == session_id)
+    )
+    presence = presence_result.scalar_one_or_none()
+
+    if presence is not None and presence.client_ip:
+        by_ip = await db.execute(
+            select(SessionRecording)
+            .where(
+                SessionRecording.client_ip == presence.client_ip,
+                SessionRecording.event_count > 0,
+            )
+            .order_by(SessionRecording.started_at.desc())
+            .limit(1)
+        )
+        ip_rec = by_ip.scalar_one_or_none()
+        if ip_rec is not None:
+            return await get_recording_detail(db, str(ip_rec.id))
+
+    recording_id = await _ensure_presence_trail(
+        db,
+        session_id=session_id,
+        page_path=presence.page_path if presence else None,
+        client_ip=presence.client_ip if presence else None,
+        client_country=presence.client_country if presence else None,
+        client_user_agent=presence.client_user_agent if presence else None,
+        now=now,
+    )
+    await db.flush()
+    return await get_recording_detail(db, recording_id)
 
 
 async def _recording_index_for(
@@ -304,6 +364,25 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
     by_session, by_ip = await _recording_index_for(
         db, session_ids=session_ids, client_ips=client_ips
     )
+
+    # Seed missing trails so Watch never shows empty for a live presence row
+    for row in rows:
+        if row.session_id in by_session:
+            continue
+        if row.client_ip and row.client_ip in by_ip:
+            continue
+        try:
+            rid = await _ensure_presence_trail(
+                db,
+                session_id=row.session_id,
+                page_path=row.page_path,
+                client_ip=row.client_ip,
+                client_country=row.client_country,
+                client_user_agent=row.client_user_agent,
+            )
+            by_session[row.session_id] = rid
+        except Exception:
+            logger.exception("live visitor trail seed failed for %s", row.session_id)
 
     visitors = []
     for row in rows:

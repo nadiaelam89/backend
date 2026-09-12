@@ -53,7 +53,12 @@ async def visitor_heartbeat(
     except Exception as exc:
         logger.exception("heartbeat failed")
         msg = str(exc).lower()
-        if "visitor_presence" in msg or "does not exist" in msg or "no such table" in msg:
+        if (
+            "visitor_presence" in msg
+            or "session_recording" in msg
+            or "does not exist" in msg
+            or "no such table" in msg
+        ):
             try:
                 await db.rollback()
                 await _ensure_tables()
