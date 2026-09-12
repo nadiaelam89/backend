@@ -48,8 +48,8 @@ async def visitor_heartbeat(
     client_ip = get_client_ip(request)
     client_country = get_client_country(request)
     try:
-        await upsert_visitor_heartbeat(db, payload, client_ip, client_country)
-        return HeartbeatResponse(ok=True)
+        _, recording_id = await upsert_visitor_heartbeat(db, payload, client_ip, client_country)
+        return HeartbeatResponse(ok=True, recording_id=recording_id)
     except Exception as exc:
         logger.exception("heartbeat failed")
         msg = str(exc).lower()
@@ -62,8 +62,10 @@ async def visitor_heartbeat(
             try:
                 await db.rollback()
                 await _ensure_tables()
-                await upsert_visitor_heartbeat(db, payload, client_ip, client_country)
-                return HeartbeatResponse(ok=True)
+                _, recording_id = await upsert_visitor_heartbeat(
+                    db, payload, client_ip, client_country
+                )
+                return HeartbeatResponse(ok=True, recording_id=recording_id)
             except Exception as retry_exc:
                 logger.exception("heartbeat retry failed")
                 raise HTTPException(

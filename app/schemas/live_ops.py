@@ -10,10 +10,13 @@ class HeartbeatRequest(BaseModel):
     session_id: str = Field(..., min_length=8, max_length=80)
     page_path: str | None = None
     client_user_agent: str | None = None
+    recording_id: str | None = None
+    trail_events: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
 
 
 class HeartbeatResponse(BaseModel):
     ok: bool = True
+    recording_id: str | None = None
 
 
 class RecordingChunkRequest(BaseModel):

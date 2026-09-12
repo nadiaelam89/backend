@@ -31,7 +31,7 @@ async def upsert_visitor_heartbeat(
     payload: HeartbeatRequest,
     client_ip: str | None,
     client_country: str | None,
-) -> VisitorPresence:
+) -> tuple[VisitorPresence, str | None]:
     now = datetime.now(timezone.utc)
     decision = await check_visitor_ip_fraud(
         client_ip=client_ip,
@@ -68,25 +68,47 @@ async def upsert_visitor_heartbeat(
 
     await db.flush()
 
-    # Guarantee a Watchable trail for every live visitor (even if client trail is blocked)
-    try:
-        await _ensure_presence_trail(
-            db,
-            session_id=payload.session_id,
-            page_path=payload.page_path,
-            client_ip=client_ip,
-            client_country=decision.country_code or client_country,
-            client_user_agent=payload.client_user_agent,
-            now=now,
-        )
-    except Exception as exc:
-        logger.exception("presence trail seed failed")
-        msg = str(exc).lower()
-        if "session_recording" in msg or "does not exist" in msg or "no such table" in msg:
-            raise
-        # Keep heartbeat alive even if trail write fails for other reasons
+    recording_id: str | None = None
+    country = decision.country_code or client_country
 
-    return presence
+    # Prefer client trail events (clicks/scroll/cursor) piggybacked on heartbeat
+    if payload.trail_events:
+        try:
+            chunk = await append_recording_chunk(
+                db,
+                RecordingChunkRequest(
+                    session_id=payload.session_id,
+                    recording_id=payload.recording_id,
+                    page_path=payload.page_path,
+                    client_user_agent=payload.client_user_agent,
+                    events=payload.trail_events,
+                    is_final=False,
+                ),
+                client_ip,
+                country,
+            )
+            recording_id = chunk.recording_id or None
+        except Exception:
+            logger.exception("heartbeat trail_events append failed")
+
+    if not recording_id:
+        try:
+            recording_id = await _ensure_presence_trail(
+                db,
+                session_id=payload.session_id,
+                page_path=payload.page_path,
+                client_ip=client_ip,
+                client_country=country,
+                client_user_agent=payload.client_user_agent,
+                now=now,
+            )
+        except Exception as exc:
+            logger.exception("presence trail seed failed")
+            msg = str(exc).lower()
+            if "session_recording" in msg or "does not exist" in msg or "no such table" in msg:
+                raise
+
+    return presence, recording_id
 
 
 async def _ensure_presence_trail(
