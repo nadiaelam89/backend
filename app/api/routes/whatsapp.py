@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Query, Request, Response
 from slowapi import Limiter
@@ -31,31 +31,31 @@ async def contact_config() -> ContactConfigResponse:
 
 
 @router.post("/api/chat/send", response_model=SiteChatSendResponse)
-@limiter.limit("30/minute")
+@limiter.limit("60/minute")
 async def chat_send(
     request: Request,
-    payload: Annotated[SiteChatSendRequest, Body()],
+    payload: SiteChatSendRequest = Body(...),
     db: AsyncSession = Depends(get_db),
 ) -> SiteChatSendResponse:
     result = await send_site_chat_message(
         db,
-        session_id=payload.session_id,
-        body=payload.body,
-        customer_name=payload.customer_name,
-        customer_phone=payload.customer_phone,
+        session_id=payload.session_id.strip(),
+        body=payload.body.strip(),
+        customer_name=(payload.customer_name or "").strip() or None,
+        customer_phone=(payload.customer_phone or "").strip() or None,
     )
     await db.commit()
     return result
 
 
 @router.get("/api/chat/messages", response_model=SiteChatMessagesResponse)
-@limiter.limit("60/minute")
+@limiter.limit("120/minute")
 async def chat_messages(
     request: Request,
     session_id: str = Query(..., min_length=8, max_length=80),
     db: AsyncSession = Depends(get_db),
 ) -> SiteChatMessagesResponse:
-    return await list_site_chat_messages(db, session_id)
+    return await list_site_chat_messages(db, session_id.strip())
 
 
 @router.get("/api/whatsapp/webhook")

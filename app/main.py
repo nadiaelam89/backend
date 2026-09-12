@@ -46,12 +46,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.warning("Google Sheets webhook: NOT configured (orders will not sync to Sheet)")
 
-    # Local development on SQLite: create tables automatically (no migrations).
-    # Production (PostgreSQL) continues to use Alembic migrations.
-    if settings.DATABASE_URL.startswith("sqlite"):
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("SQLite tables ensured (local development)")
+    # Ensure tables exist (SQLite locally; also creates any missing tables in Postgres
+    # after deploys so new features like live chat do not require a manual SQL step).
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables ensured")
 
     # Verify DB connectivity on startup
     try:
