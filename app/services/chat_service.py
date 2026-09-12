@@ -37,6 +37,9 @@ async def send_site_chat_message(
     customer_phone: str | None = None,
 ) -> SiteChatSendResponse:
     wa_id = web_chat_id(session_id)
+    now = datetime.now(timezone.utc)
+    text = body.strip()
+
     result = await db.execute(select(WhatsAppConversation).where(WhatsAppConversation.wa_id == wa_id))
     conversation = result.scalar_one_or_none()
 
@@ -46,7 +49,11 @@ async def send_site_chat_message(
             wa_id=wa_id,
             customer_name=customer_name or "Visitor",
             customer_phone=customer_phone,
-            unread_count=0,
+            unread_count=1,
+            last_message_at=now,
+            last_message_preview=text[:240],
+            created_at=now,
+            updated_at=now,
         )
         db.add(conversation)
         await db.flush()
@@ -55,21 +62,21 @@ async def send_site_chat_message(
             conversation.customer_name = customer_name
         if customer_phone:
             conversation.customer_phone = customer_phone
+        conversation.last_message_at = now
+        conversation.last_message_preview = text[:240]
+        conversation.updated_at = now
+        conversation.unread_count = int(conversation.unread_count or 0) + 1
 
-    now = datetime.now(timezone.utc)
     message = WhatsAppMessage(
         id=uuid.uuid4(),
         conversation_id=conversation.id,
         direction="inbound",
-        body=body.strip(),
+        body=text,
         wa_message_id=None,
         status="received",
         created_at=now,
     )
     db.add(message)
-    conversation.last_message_at = now
-    conversation.last_message_preview = body.strip()[:240]
-    conversation.unread_count = int(conversation.unread_count or 0) + 1
     await db.flush()
 
     return SiteChatSendResponse(
