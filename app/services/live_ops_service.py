@@ -72,41 +72,102 @@ async def upsert_visitor_heartbeat(
 
 async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
     now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(seconds=settings.LIVE_VISITOR_TTL_SECONDS)
+    ttl = max(30, int(settings.LIVE_VISITOR_TTL_SECONDS or 60))
+    cutoff = now - timedelta(seconds=ttl)
 
-    result = await db.execute(
-        select(VisitorPresence)
-        .where(VisitorPresence.last_seen_at >= cutoff)
-        .order_by(VisitorPresence.last_seen_at.desc())
-        .limit(200)
-    )
-    rows = list(result.scalars().all())
+    try:
+        result = await db.execute(
+            select(VisitorPresence)
+            .where(VisitorPresence.last_seen_at >= cutoff)
+            .order_by(VisitorPresence.last_seen_at.desc())
+            .limit(200)
+        )
+        rows = list(result.scalars().all())
+    except Exception:
+        logger.exception("list_live_visitors presence query failed")
+        rows = []
+
+    # Fallback: recent page-view sessions if heartbeat table is empty/missing
+    if not rows:
+        try:
+            from app.db.models import SiteEvent
+
+            events = await db.execute(
+                select(
+                    SiteEvent.session_id,
+                    func.max(SiteEvent.created_at).label("last_seen_at"),
+                    func.max(SiteEvent.page_path).label("page_path"),
+                    func.max(SiteEvent.client_ip).label("client_ip"),
+                    func.max(SiteEvent.client_country).label("client_country"),
+                    func.max(SiteEvent.client_user_agent).label("client_user_agent"),
+                )
+                .where(SiteEvent.created_at >= cutoff)
+                .group_by(SiteEvent.session_id)
+                .order_by(func.max(SiteEvent.created_at).desc())
+                .limit(200)
+            )
+            fallback_rows = events.all()
+            visitors = []
+            for row in fallback_rows:
+                last_seen = row.last_seen_at
+                if last_seen is not None and last_seen.tzinfo is None:
+                    last_seen = last_seen.replace(tzinfo=timezone.utc)
+                visitors.append(
+                    LiveVisitorItem(
+                        session_id=row.session_id,
+                        page_path=row.page_path,
+                        client_ip=row.client_ip,
+                        client_country=row.client_country,
+                        client_user_agent=row.client_user_agent,
+                        is_valid_traffic=True,
+                        first_seen_at=last_seen or now,
+                        last_seen_at=last_seen or now,
+                        seconds_ago=max(
+                            0, int((now - (last_seen or now)).total_seconds())
+                        ),
+                        has_recording=False,
+                    )
+                )
+            return LiveVisitorsResponse(live_count=len(visitors), visitors=visitors)
+        except Exception:
+            logger.exception("list_live_visitors fallback failed")
+            return LiveVisitorsResponse(live_count=0, visitors=[])
+
     session_ids = [r.session_id for r in rows]
-
     recording_sessions: set[str] = set()
     if session_ids:
-        rec_result = await db.execute(
-            select(SessionRecording.session_id)
-            .where(SessionRecording.session_id.in_(session_ids))
-            .distinct()
-        )
-        recording_sessions = {row[0] for row in rec_result.all()}
+        try:
+            rec_result = await db.execute(
+                select(SessionRecording.session_id)
+                .where(SessionRecording.session_id.in_(session_ids))
+                .distinct()
+            )
+            recording_sessions = {row[0] for row in rec_result.all()}
+        except Exception:
+            logger.exception("list_live_visitors recordings lookup failed")
 
-    visitors = [
-        LiveVisitorItem(
-            session_id=row.session_id,
-            page_path=row.page_path,
-            client_ip=row.client_ip,
-            client_country=row.client_country,
-            client_user_agent=row.client_user_agent,
-            is_valid_traffic=row.is_valid_traffic,
-            first_seen_at=row.first_seen_at,
-            last_seen_at=row.last_seen_at,
-            seconds_ago=max(0, int((now - row.last_seen_at).total_seconds())),
-            has_recording=row.session_id in recording_sessions,
+    visitors = []
+    for row in rows:
+        last_seen = row.last_seen_at
+        if last_seen is not None and last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+        first_seen = row.first_seen_at
+        if first_seen is not None and first_seen.tzinfo is None:
+            first_seen = first_seen.replace(tzinfo=timezone.utc)
+        visitors.append(
+            LiveVisitorItem(
+                session_id=row.session_id,
+                page_path=row.page_path,
+                client_ip=row.client_ip,
+                client_country=row.client_country,
+                client_user_agent=row.client_user_agent,
+                is_valid_traffic=row.is_valid_traffic,
+                first_seen_at=first_seen or now,
+                last_seen_at=last_seen or now,
+                seconds_ago=max(0, int((now - (last_seen or now)).total_seconds())),
+                has_recording=row.session_id in recording_sessions,
+            )
         )
-        for row in rows
-    ]
 
     return LiveVisitorsResponse(live_count=len(visitors), visitors=visitors)
 

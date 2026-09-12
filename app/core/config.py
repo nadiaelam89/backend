@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     WHATSAPP_API_VERSION: str = "v21.0"
 
     # Live presence: visitors with heartbeat newer than this are "online"
-    LIVE_VISITOR_TTL_SECONDS: int = 60
+    LIVE_VISITOR_TTL_SECONDS: int = 90
     # Cap rrweb events stored per recording (privacy + storage)
     RECORDING_MAX_EVENTS: int = 8000
     RECORDING_MAX_CHUNKS: int = 40
