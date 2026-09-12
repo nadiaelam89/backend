@@ -71,27 +71,55 @@ async def upsert_visitor_heartbeat(
     recording_id: str | None = None
     country = decision.country_code or client_country
 
-    # Prefer client trail events (clicks/scroll/cursor) piggybacked on heartbeat
-    if payload.trail_events:
-        try:
-            chunk = await append_recording_chunk(
-                db,
-                RecordingChunkRequest(
-                    session_id=payload.session_id,
-                    recording_id=payload.recording_id,
-                    page_path=payload.page_path,
-                    client_user_agent=payload.client_user_agent,
-                    events=payload.trail_events,
-                    is_final=False,
-                ),
-                client_ip,
-                country,
-            )
-            recording_id = chunk.recording_id or None
-        except Exception:
-            logger.exception("heartbeat trail_events append failed")
+    # Always append trail data on heartbeat (client events and/or a page tick).
+    # This is what makes Replay have more than 1 event.
+    started_ms = 0
+    try:
+        existing = await db.execute(
+            select(SessionRecording)
+            .where(SessionRecording.session_id == payload.session_id)
+            .order_by(SessionRecording.started_at.desc())
+            .limit(1)
+        )
+        rec = existing.scalar_one_or_none()
+        if rec and rec.started_at is not None:
+            started = rec.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            started_ms = max(0, int((now - started).total_seconds() * 1000))
+    except Exception:
+        started_ms = 0
 
-    if not recording_id:
+    events = list(payload.trail_events or [])
+    if not events:
+        events = [
+            {
+                "t": started_ms,
+                "type": "nav",
+                "path": payload.page_path or "/",
+            }
+        ]
+
+    try:
+        chunk = await append_recording_chunk(
+            db,
+            RecordingChunkRequest(
+                session_id=payload.session_id,
+                recording_id=payload.recording_id,
+                page_path=payload.page_path,
+                client_user_agent=payload.client_user_agent,
+                events=events,
+                is_final=False,
+            ),
+            client_ip,
+            country,
+        )
+        recording_id = chunk.recording_id or None
+    except Exception as exc:
+        logger.exception("heartbeat trail append failed")
+        msg = str(exc).lower()
+        if "session_recording" in msg or "does not exist" in msg or "no such table" in msg:
+            raise
         try:
             recording_id = await _ensure_presence_trail(
                 db,
@@ -102,11 +130,8 @@ async def upsert_visitor_heartbeat(
                 client_user_agent=payload.client_user_agent,
                 now=now,
             )
-        except Exception as exc:
+        except Exception:
             logger.exception("presence trail seed failed")
-            msg = str(exc).lower()
-            if "session_recording" in msg or "does not exist" in msg or "no such table" in msg:
-                raise
 
     return presence, recording_id
 
@@ -151,12 +176,12 @@ async def _ensure_presence_trail(
         updated = recording.updated_at
         if updated is not None and updated.tzinfo is None:
             updated = updated.replace(tzinfo=timezone.utc)
-        # Throttle identical ticks; always record path changes
+        # Light throttle only (2s) so Replay timelines grow while visitors stay on a page
         if (
             updated
             and page_path == recording.page_path
             and recording.event_count > 0
-            and (now - updated).total_seconds() < 8
+            and (now - updated).total_seconds() < 2
         ):
             return str(recording.id)
 
