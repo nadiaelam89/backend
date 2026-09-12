@@ -13,7 +13,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.routes import admin, events, health, orders, payments, public, redirects
+from app.api.routes import admin, events, health, orders, payments, public, redirects, whatsapp
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.models import Base
@@ -99,6 +99,7 @@ app.include_router(orders.router)
 app.include_router(payments.router)
 app.include_router(events.router)
 app.include_router(admin.router)
+app.include_router(whatsapp.router)
 app.include_router(redirects.public_router)
 app.include_router(redirects.admin_router)
 

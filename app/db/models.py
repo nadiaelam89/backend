@@ -169,3 +169,125 @@ class AdRedirect(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class VisitorPresence(Base):
+    """Live visitor heartbeat — one row per browser session."""
+
+    __tablename__ = "visitor_presence"
+
+    session_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    page_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_ip: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    client_country: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    client_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_valid_traffic: Mapped[bool] = mapped_column(nullable=False, default=False)
+    fraud_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+
+class SessionRecording(Base):
+    """Visitor interaction trail metadata (clicks, scroll, pages)."""
+
+    __tablename__ = "session_recordings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    page_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_ip: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_country: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="recording")
+
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    chunks: Mapped[list[SessionRecordingChunk]] = relationship(
+        "SessionRecordingChunk", back_populates="recording", cascade="all, delete-orphan"
+    )
+
+
+class SessionRecordingChunk(Base):
+    __tablename__ = "session_recording_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
+    recording_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType, ForeignKey("session_recordings.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    events_json: Mapped[str] = mapped_column(Text, nullable=False)
+    event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    recording: Mapped[SessionRecording] = relationship("SessionRecording", back_populates="chunks")
+
+
+class WhatsAppConversation(Base):
+    __tablename__ = "whatsapp_conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
+    wa_id: Mapped[str] = mapped_column(Text, unique=True, nullable=False, index=True)
+    customer_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_message_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unread_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    last_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    messages: Mapped[list[WhatsAppMessage]] = relationship(
+        "WhatsAppMessage", back_populates="conversation", cascade="all, delete-orphan"
+    )
+
+
+class WhatsAppMessage(Base):
+    __tablename__ = "whatsapp_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType,
+        ForeignKey("whatsapp_conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    direction: Mapped[str] = mapped_column(Text, nullable=False)  # inbound | outbound
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    wa_message_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="received")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    conversation: Mapped[WhatsAppConversation] = relationship(
+        "WhatsAppConversation", back_populates="messages"
+    )

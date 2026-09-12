@@ -15,12 +15,27 @@ from app.schemas.admin import (
     AdminOrdersListResponse,
     AdminPurgeDataResponse,
 )
+from app.schemas.live_ops import (
+    LiveVisitorsResponse,
+    RecordingDetailResponse,
+    RecordingsListResponse,
+    WhatsAppConversationsResponse,
+    WhatsAppMessagesResponse,
+    WhatsAppReplyRequest,
+    WhatsAppReplyResponse,
+)
 from app.services.admin_auth import TOKEN_TTL_SECONDS, authenticate_admin, verify_admin_token
 from app.services.admin_service import (
     get_admin_metrics,
     get_admin_order_detail,
     list_admin_orders,
     purge_all_data,
+)
+from app.services.live_ops_service import get_recording_detail, list_live_visitors, list_recordings
+from app.services.whatsapp_service import (
+    get_conversation_messages,
+    list_conversations,
+    reply_to_conversation,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
@@ -83,3 +98,68 @@ async def admin_order_detail(
     db: AsyncSession = Depends(get_db),
 ) -> AdminOrderDetailResponse:
     return await get_admin_order_detail(db, order_id)
+
+
+@router.get("/visitors/live", response_model=LiveVisitorsResponse)
+async def admin_live_visitors(
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+) -> LiveVisitorsResponse:
+    return await list_live_visitors(db)
+
+
+@router.get("/recordings", response_model=RecordingsListResponse)
+async def admin_recordings(
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    session_id: str | None = Query(default=None),
+) -> RecordingsListResponse:
+    return await list_recordings(db, page, page_size, session_id)
+
+
+@router.get("/recordings/{recording_id}", response_model=RecordingDetailResponse)
+async def admin_recording_detail(
+    recording_id: str,
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+) -> RecordingDetailResponse:
+    return await get_recording_detail(db, recording_id)
+
+
+@router.get("/whatsapp/conversations", response_model=WhatsAppConversationsResponse)
+async def admin_whatsapp_conversations(
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+) -> WhatsAppConversationsResponse:
+    return await list_conversations(db)
+
+
+@router.get(
+    "/whatsapp/conversations/{conversation_id}/messages",
+    response_model=WhatsAppMessagesResponse,
+)
+async def admin_whatsapp_messages(
+    conversation_id: str,
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+) -> WhatsAppMessagesResponse:
+    result = await get_conversation_messages(db, conversation_id)
+    await db.commit()
+    return result
+
+
+@router.post(
+    "/whatsapp/conversations/{conversation_id}/reply",
+    response_model=WhatsAppReplyResponse,
+)
+async def admin_whatsapp_reply(
+    conversation_id: str,
+    payload: WhatsAppReplyRequest,
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+) -> WhatsAppReplyResponse:
+    result = await reply_to_conversation(db, conversation_id, payload.body.strip())
+    await db.commit()
+    return result

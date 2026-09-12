@@ -7,7 +7,15 @@ from sqlalchemy import Date, cast, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import AnalyticsEvent, Order, OrderItem, SiteEvent
+from app.db.models import (
+    AnalyticsEvent,
+    Order,
+    OrderItem,
+    SessionRecording,
+    SiteEvent,
+    VisitorPresence,
+    WhatsAppConversation,
+)
 from app.schemas.admin import (
     AdminChannelRevenueItem,
     AdminDailyTrendItem,
@@ -79,6 +87,9 @@ async def purge_all_data(db: AsyncSession) -> dict[str, int]:
         ("analytics_events", delete(AnalyticsEvent)),
         ("order_items", delete(OrderItem)),
         ("site_events", delete(SiteEvent)),
+        ("session_recordings", delete(SessionRecording)),
+        ("visitor_presence", delete(VisitorPresence)),
+        ("whatsapp_conversations", delete(WhatsAppConversation)),
         ("orders", delete(Order)),
     ]:
         result = await db.execute(stmt)
