@@ -70,16 +70,36 @@ async def upsert_visitor_heartbeat(
     return presence
 
 
-async def _recording_index(
+async def _recording_index_for(
     db: AsyncSession,
+    *,
+    session_ids: list[str],
+    client_ips: list[str],
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Map session_id -> recording_id and client_ip -> recording_id (latest with events)."""
+    """Map session_id / client_ip -> latest recording_id (with events) for live rows."""
     by_session: dict[str, str] = {}
     by_ip: dict[str, str] = {}
+    if not session_ids and not client_ips:
+        return by_session, by_ip
     try:
+        filters = [SessionRecording.event_count > 0]
+        if session_ids and client_ips:
+            from sqlalchemy import or_
+
+            filters.append(
+                or_(
+                    SessionRecording.session_id.in_(session_ids),
+                    SessionRecording.client_ip.in_(client_ips),
+                )
+            )
+        elif session_ids:
+            filters.append(SessionRecording.session_id.in_(session_ids))
+        else:
+            filters.append(SessionRecording.client_ip.in_(client_ips))
+
         result = await db.execute(
             select(SessionRecording)
-            .where(SessionRecording.event_count > 0)
+            .where(*filters)
             .order_by(SessionRecording.started_at.desc())
             .limit(500)
         )
@@ -111,7 +131,6 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
     now = datetime.now(timezone.utc)
     ttl = max(30, int(settings.LIVE_VISITOR_TTL_SECONDS or 60))
     cutoff = now - timedelta(seconds=ttl)
-    by_session, by_ip = await _recording_index(db)
 
     try:
         result = await db.execute(
@@ -145,6 +164,11 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
                 .limit(200)
             )
             fallback_rows = events.all()
+            session_ids = [row.session_id for row in fallback_rows if row.session_id]
+            client_ips = [row.client_ip for row in fallback_rows if row.client_ip]
+            by_session, by_ip = await _recording_index_for(
+                db, session_ids=session_ids, client_ips=client_ips
+            )
             visitors = []
             for row in fallback_rows:
                 last_seen = row.last_seen_at
@@ -178,6 +202,12 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
         except Exception:
             logger.exception("list_live_visitors fallback failed")
             return LiveVisitorsResponse(live_count=0, visitors=[])
+
+    session_ids = [row.session_id for row in rows if row.session_id]
+    client_ips = [row.client_ip for row in rows if row.client_ip]
+    by_session, by_ip = await _recording_index_for(
+        db, session_ids=session_ids, client_ips=client_ips
+    )
 
     visitors = []
     for row in rows:
@@ -266,10 +296,7 @@ async def append_recording_chunk(
     if recording is None:
         result = await db.execute(
             select(SessionRecording)
-            .where(
-                SessionRecording.session_id == payload.session_id,
-                SessionRecording.status == "recording",
-            )
+            .where(SessionRecording.session_id == payload.session_id)
             .order_by(SessionRecording.started_at.desc())
             .limit(1)
         )
@@ -305,6 +332,10 @@ async def append_recording_chunk(
             recording.client_ip = client_ip or recording.client_ip
             recording.client_country = client_country or recording.client_country
             recording.updated_at = now
+            # Resume if visitor came back after a prior finalize
+            if not payload.is_final:
+                recording.status = "recording"
+                recording.ended_at = None
 
         stopped = recording.event_count >= settings.RECORDING_MAX_EVENTS or (
             recording.chunk_count >= settings.RECORDING_MAX_CHUNKS
@@ -319,7 +350,7 @@ async def append_recording_chunk(
     return RecordingChunkResponse(
         recording_id=str(recording.id),
         accepted=accepted,
-        stopped=recording.status == "completed",
+        stopped=recording.status == "completed" and stopped,
     )
 
 
