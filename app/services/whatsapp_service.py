@@ -41,15 +41,11 @@ def build_whatsapp_url(number: str | None = None, message: str | None = None) ->
 
 
 def get_contact_config() -> ContactConfigResponse:
-    raw = settings.WHATSAPP_BUSINESS_NUMBER or ""
-    number = "".join(c for c in raw if c.isdigit())
-    if "X" in raw.upper() or len(number) < 12:
-        number = ""
     return ContactConfigResponse(
-        whatsapp_number=number,
-        whatsapp_url=build_whatsapp_url(number),
-        prefill_message=settings.WHATSAPP_PREFILL_MESSAGE,
-        inbox_configured=whatsapp_configured(),
+        whatsapp_number="",
+        whatsapp_url="",
+        prefill_message="",
+        inbox_configured=True,
     )
 
 
@@ -58,7 +54,7 @@ def _conversation_item(c: WhatsAppConversation) -> WhatsAppConversationItem:
         id=str(c.id),
         wa_id=c.wa_id,
         customer_name=c.customer_name,
-        customer_phone=c.customer_phone or c.wa_id,
+        customer_phone=c.customer_phone or (None if c.wa_id.startswith("web:") else c.wa_id),
         last_message_preview=c.last_message_preview,
         unread_count=c.unread_count,
         last_message_at=c.last_message_at,
@@ -84,10 +80,9 @@ async def list_conversations(db: AsyncSession) -> WhatsAppConversationsResponse:
         )
     )
     rows = list(result.scalars().all())
-    number = "".join(c for c in settings.WHATSAPP_BUSINESS_NUMBER if c.isdigit())
     return WhatsAppConversationsResponse(
-        configured=whatsapp_configured(),
-        business_number=number,
+        configured=True,
+        business_number="",
         total=len(rows),
         conversations=[_conversation_item(c) for c in rows],
     )
@@ -134,7 +129,7 @@ async def _get_or_create_conversation(
             id=uuid.uuid4(),
             wa_id=wa_id,
             customer_name=customer_name,
-            customer_phone=wa_id,
+            customer_phone=wa_id if not wa_id.startswith("web:") else None,
             unread_count=0,
         )
         db.add(conversation)
@@ -216,41 +211,12 @@ async def send_whatsapp_text(to_wa_id: str, body: str) -> dict:
 async def reply_to_conversation(
     db: AsyncSession, conversation_id: str, body: str
 ) -> WhatsAppReplyResponse:
-    try:
-        cid = uuid.UUID(conversation_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    from app.services.chat_service import reply_site_or_whatsapp
 
-    result = await db.execute(
-        select(WhatsAppConversation).where(WhatsAppConversation.id == cid)
+    message = await reply_site_or_whatsapp(
+        db, conversation_id, body, send_whatsapp_fn=send_whatsapp_text
     )
-    conversation = result.scalar_one_or_none()
-    if conversation is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-
-    api_result = await send_whatsapp_text(conversation.wa_id, body)
-    wa_message_id = None
-    try:
-        wa_message_id = api_result["messages"][0]["id"]
-    except (KeyError, IndexError, TypeError):
-        pass
-
-    now = datetime.now(timezone.utc)
-    message = WhatsAppMessage(
-        id=uuid.uuid4(),
-        conversation_id=conversation.id,
-        direction="outbound",
-        body=body,
-        wa_message_id=wa_message_id,
-        status="sent",
-        created_at=now,
-    )
-    db.add(message)
-    conversation.last_message_at = now
-    conversation.last_message_preview = body[:240]
-    await db.flush()
-
-    return WhatsAppReplyResponse(message=_message_item(message))
+    return WhatsAppReplyResponse(message=message)
 
 
 async def process_webhook_payload(db: AsyncSession, payload: dict) -> int:
