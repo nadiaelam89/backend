@@ -45,8 +45,8 @@ async def visitor_heartbeat(
     payload: HeartbeatRequest = Body(...),
     db: AsyncSession = Depends(get_db),
 ) -> HeartbeatResponse:
-    client_ip = get_client_ip(request)
-    client_country = get_client_country(request)
+    client_ip = payload.client_ip or get_client_ip(request)
+    client_country = payload.client_country or get_client_country(request)
     try:
         _, recording_id = await upsert_visitor_heartbeat(db, payload, client_ip, client_country)
         return HeartbeatResponse(ok=True, recording_id=recording_id)
@@ -84,8 +84,8 @@ async def recording_chunk(
     payload: RecordingChunkRequest = Body(...),
     db: AsyncSession = Depends(get_db),
 ) -> RecordingChunkResponse:
-    client_ip = get_client_ip(request)
-    client_country = get_client_country(request)
+    client_ip = payload.client_ip or get_client_ip(request)
+    client_country = payload.client_country or get_client_country(request)
     try:
         return await append_recording_chunk(db, payload, client_ip, client_country)
     except Exception as exc:

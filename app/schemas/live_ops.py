@@ -11,6 +11,9 @@ class HeartbeatRequest(BaseModel):
     page_path: str | None = None
     client_user_agent: str | None = None
     recording_id: str | None = None
+    # Filled by Next.js proxy — more reliable than headers across containers
+    client_ip: str | None = None
+    client_country: str | None = None
     trail_events: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
 
 
@@ -24,6 +27,8 @@ class RecordingChunkRequest(BaseModel):
     recording_id: str | None = None
     page_path: str | None = None
     client_user_agent: str | None = None
+    client_ip: str | None = None
+    client_country: str | None = None
     events: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
     is_final: bool = False
 
