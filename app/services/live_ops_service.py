@@ -67,7 +67,103 @@ async def upsert_visitor_heartbeat(
         presence.last_seen_at = now
 
     await db.flush()
+
+    # Guarantee a Watchable trail for every live visitor (even if client trail is blocked)
+    try:
+        await _ensure_presence_trail(
+            db,
+            session_id=payload.session_id,
+            page_path=payload.page_path,
+            client_ip=client_ip,
+            client_country=decision.country_code or client_country,
+            client_user_agent=payload.client_user_agent,
+            now=now,
+        )
+    except Exception:
+        logger.exception("presence trail seed failed")
+
     return presence
+
+
+async def _ensure_presence_trail(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    page_path: str | None,
+    client_ip: str | None,
+    client_country: str | None,
+    client_user_agent: str | None,
+    now: datetime,
+) -> None:
+    """Append a throttled nav tick so live visitors always have a recording row."""
+    result = await db.execute(
+        select(SessionRecording)
+        .where(SessionRecording.session_id == session_id)
+        .order_by(SessionRecording.started_at.desc())
+        .limit(1)
+    )
+    recording = result.scalar_one_or_none()
+
+    if recording is None:
+        recording = SessionRecording(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            page_path=page_path,
+            client_ip=client_ip,
+            client_country=client_country,
+            client_user_agent=client_user_agent,
+            event_count=0,
+            chunk_count=0,
+            status="recording",
+            started_at=now,
+            updated_at=now,
+        )
+        db.add(recording)
+        await db.flush()
+    else:
+        updated = recording.updated_at
+        if updated is not None and updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        # Throttle identical ticks; always record path changes
+        if (
+            updated
+            and page_path == recording.page_path
+            and (now - updated).total_seconds() < 8
+        ):
+            return
+
+    if recording.event_count >= settings.RECORDING_MAX_EVENTS:
+        return
+    if recording.chunk_count >= settings.RECORDING_MAX_CHUNKS:
+        return
+
+    elapsed_ms = 0
+    if recording.started_at is not None:
+        started = recording.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        elapsed_ms = max(0, int((now - started).total_seconds() * 1000))
+
+    event = {"t": elapsed_ms, "type": "nav", "path": page_path or recording.page_path or "/"}
+    chunk = SessionRecordingChunk(
+        id=uuid.uuid4(),
+        recording_id=recording.id,
+        seq=recording.chunk_count,
+        events_json=json.dumps([event], separators=(",", ":")),
+        event_count=1,
+    )
+    db.add(chunk)
+    recording.event_count += 1
+    recording.chunk_count += 1
+    if page_path:
+        recording.page_path = page_path
+    recording.client_ip = client_ip or recording.client_ip
+    recording.client_country = client_country or recording.client_country
+    recording.client_user_agent = client_user_agent or recording.client_user_agent
+    recording.status = "recording"
+    recording.ended_at = None
+    recording.updated_at = now
+    await db.flush()
 
 
 async def _recording_index_for(
