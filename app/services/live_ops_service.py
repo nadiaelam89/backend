@@ -179,8 +179,10 @@ async def append_recording_chunk(
     client_country: str | None,
 ) -> RecordingChunkResponse:
     events = payload.events[:500]
-    if not events and not payload.is_final and not payload.recording_id:
-        recording = SessionRecording(
+    now = datetime.now(timezone.utc)
+
+    def _new_recording() -> SessionRecording:
+        return SessionRecording(
             id=uuid.uuid4(),
             session_id=payload.session_id,
             page_path=payload.page_path,
@@ -190,7 +192,12 @@ async def append_recording_chunk(
             event_count=0,
             chunk_count=0,
             status="recording",
+            started_at=now,
+            updated_at=now,
         )
+
+    if not events and not payload.is_final and not payload.recording_id:
+        recording = _new_recording()
         db.add(recording)
         await db.flush()
         return RecordingChunkResponse(recording_id=str(recording.id), accepted=0)
@@ -218,17 +225,7 @@ async def append_recording_chunk(
         recording = result.scalar_one_or_none()
 
     if recording is None:
-        recording = SessionRecording(
-            id=uuid.uuid4(),
-            session_id=payload.session_id,
-            page_path=payload.page_path,
-            client_ip=client_ip,
-            client_country=client_country,
-            client_user_agent=payload.client_user_agent,
-            event_count=0,
-            chunk_count=0,
-            status="recording",
-        )
+        recording = _new_recording()
         db.add(recording)
         await db.flush()
 
