@@ -58,9 +58,9 @@ class Settings(BaseSettings):
 
     # Live presence: visitors with heartbeat newer than this are "online"
     LIVE_VISITOR_TTL_SECONDS: int = 90
-    # Cap rrweb events stored per recording (privacy + storage)
-    RECORDING_MAX_EVENTS: int = 8000
-    RECORDING_MAX_CHUNKS: int = 40
+    # Cap interaction events stored per recording (privacy + storage)
+    RECORDING_MAX_EVENTS: int = 50000
+    RECORDING_MAX_CHUNKS: int = 500
 
     @field_validator("APP_ENV")
     @classmethod
