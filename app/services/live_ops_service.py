@@ -70,10 +70,48 @@ async def upsert_visitor_heartbeat(
     return presence
 
 
+async def _recording_index(
+    db: AsyncSession,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Map session_id -> recording_id and client_ip -> recording_id (latest with events)."""
+    by_session: dict[str, str] = {}
+    by_ip: dict[str, str] = {}
+    try:
+        result = await db.execute(
+            select(SessionRecording)
+            .where(SessionRecording.event_count > 0)
+            .order_by(SessionRecording.started_at.desc())
+            .limit(500)
+        )
+        for rec in result.scalars().all():
+            if rec.session_id and rec.session_id not in by_session:
+                by_session[rec.session_id] = str(rec.id)
+            if rec.client_ip and rec.client_ip not in by_ip:
+                by_ip[rec.client_ip] = str(rec.id)
+    except Exception:
+        logger.exception("recording index lookup failed")
+    return by_session, by_ip
+
+
+def _attach_recording(
+    *,
+    session_id: str,
+    client_ip: str | None,
+    by_session: dict[str, str],
+    by_ip: dict[str, str],
+) -> tuple[bool, str | None, str | None]:
+    if session_id in by_session:
+        return True, by_session[session_id], "session"
+    if client_ip and client_ip in by_ip:
+        return True, by_ip[client_ip], "ip"
+    return False, None, None
+
+
 async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
     now = datetime.now(timezone.utc)
     ttl = max(30, int(settings.LIVE_VISITOR_TTL_SECONDS or 60))
     cutoff = now - timedelta(seconds=ttl)
+    by_session, by_ip = await _recording_index(db)
 
     try:
         result = await db.execute(
@@ -112,6 +150,12 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
                 last_seen = row.last_seen_at
                 if last_seen is not None and last_seen.tzinfo is None:
                     last_seen = last_seen.replace(tzinfo=timezone.utc)
+                has_rec, rec_id, match = _attach_recording(
+                    session_id=row.session_id,
+                    client_ip=row.client_ip,
+                    by_session=by_session,
+                    by_ip=by_ip,
+                )
                 visitors.append(
                     LiveVisitorItem(
                         session_id=row.session_id,
@@ -125,26 +169,15 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
                         seconds_ago=max(
                             0, int((now - (last_seen or now)).total_seconds())
                         ),
-                        has_recording=False,
+                        has_recording=has_rec,
+                        recording_id=rec_id,
+                        recording_match=match,
                     )
                 )
             return LiveVisitorsResponse(live_count=len(visitors), visitors=visitors)
         except Exception:
             logger.exception("list_live_visitors fallback failed")
             return LiveVisitorsResponse(live_count=0, visitors=[])
-
-    session_ids = [r.session_id for r in rows]
-    recording_sessions: set[str] = set()
-    if session_ids:
-        try:
-            rec_result = await db.execute(
-                select(SessionRecording.session_id)
-                .where(SessionRecording.session_id.in_(session_ids))
-                .distinct()
-            )
-            recording_sessions = {row[0] for row in rec_result.all()}
-        except Exception:
-            logger.exception("list_live_visitors recordings lookup failed")
 
     visitors = []
     for row in rows:
@@ -154,6 +187,12 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
         first_seen = row.first_seen_at
         if first_seen is not None and first_seen.tzinfo is None:
             first_seen = first_seen.replace(tzinfo=timezone.utc)
+        has_rec, rec_id, match = _attach_recording(
+            session_id=row.session_id,
+            client_ip=row.client_ip,
+            by_session=by_session,
+            by_ip=by_ip,
+        )
         visitors.append(
             LiveVisitorItem(
                 session_id=row.session_id,
@@ -165,7 +204,9 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
                 first_seen_at=first_seen or now,
                 last_seen_at=last_seen or now,
                 seconds_ago=max(0, int((now - (last_seen or now)).total_seconds())),
-                has_recording=row.session_id in recording_sessions,
+                has_recording=has_rec,
+                recording_id=rec_id,
+                recording_match=match,
             )
         )
 
@@ -287,20 +328,24 @@ async def list_recordings(
     page: int = 1,
     page_size: int = 20,
     session_id: str | None = None,
+    client_ip: str | None = None,
 ) -> RecordingsListResponse:
-    filters = []
+    filters = [SessionRecording.event_count > 0]
     if session_id:
         filters.append(SessionRecording.session_id == session_id)
+    if client_ip:
+        filters.append(SessionRecording.client_ip == client_ip)
 
-    count_q = select(func.count()).select_from(SessionRecording)
-    if filters:
-        count_q = count_q.where(*filters)
+    count_q = select(func.count()).select_from(SessionRecording).where(*filters)
     total = int((await db.execute(count_q)).scalar_one())
 
-    q = select(SessionRecording).order_by(SessionRecording.started_at.desc())
-    if filters:
-        q = q.where(*filters)
-    q = q.offset((page - 1) * page_size).limit(page_size)
+    q = (
+        select(SessionRecording)
+        .where(*filters)
+        .order_by(SessionRecording.started_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     rows = list((await db.execute(q)).scalars().all())
 
     return RecordingsListResponse(
@@ -321,7 +366,6 @@ async def list_recordings(
                 ended_at=r.ended_at,
             )
             for r in rows
-            if r.event_count > 0
         ],
     )
 

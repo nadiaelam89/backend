@@ -43,6 +43,8 @@ class LiveVisitorItem(BaseModel):
     last_seen_at: datetime
     seconds_ago: int
     has_recording: bool = False
+    recording_id: str | None = None
+    recording_match: str | None = None  # session | ip
 
 
 class LiveVisitorsResponse(BaseModel):

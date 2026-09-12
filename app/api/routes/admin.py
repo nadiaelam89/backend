@@ -115,8 +115,9 @@ async def admin_recordings(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     session_id: str | None = Query(default=None),
+    client_ip: str | None = Query(default=None),
 ) -> RecordingsListResponse:
-    return await list_recordings(db, page, page_size, session_id)
+    return await list_recordings(db, page, page_size, session_id, client_ip)
 
 
 @router.get("/recordings/{recording_id}", response_model=RecordingDetailResponse)
