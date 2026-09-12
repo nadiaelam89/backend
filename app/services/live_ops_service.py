@@ -196,21 +196,31 @@ async def append_recording_chunk(
             updated_at=now,
         )
 
-    if not events and not payload.is_final and not payload.recording_id:
-        recording = _new_recording()
-        db.add(recording)
-        await db.flush()
-        return RecordingChunkResponse(recording_id=str(recording.id), accepted=0)
-
     recording: SessionRecording | None = None
     if payload.recording_id:
         try:
             rid = uuid.UUID(payload.recording_id)
         except ValueError:
             rid = None
-        if rid:
+        else:
             result = await db.execute(select(SessionRecording).where(SessionRecording.id == rid))
             recording = result.scalar_one_or_none()
+
+    # Never create an empty recording shell — that produces "0 events" in admin.
+    if not events:
+        if recording is not None and payload.is_final:
+            recording.status = "completed"
+            recording.ended_at = now
+            recording.updated_at = now
+            await db.flush()
+            return RecordingChunkResponse(
+                recording_id=str(recording.id), accepted=0, stopped=True
+            )
+        return RecordingChunkResponse(
+            recording_id=payload.recording_id or "",
+            accepted=0,
+            stopped=bool(payload.is_final),
+        )
 
     if recording is None:
         result = await db.execute(
@@ -234,7 +244,7 @@ async def append_recording_chunk(
     )
     accepted = 0
 
-    if events and not stopped:
+    if not stopped:
         remaining = settings.RECORDING_MAX_EVENTS - recording.event_count
         to_store = events[: max(0, remaining)]
         if to_store:
@@ -242,7 +252,7 @@ async def append_recording_chunk(
                 id=uuid.uuid4(),
                 recording_id=recording.id,
                 seq=recording.chunk_count,
-                events_json=json.dumps(to_store, separators=(",", ":")),
+                events_json=json.dumps(to_store, separators=(",", ":"), default=str),
                 event_count=len(to_store),
             )
             db.add(chunk)
@@ -253,7 +263,7 @@ async def append_recording_chunk(
                 recording.page_path = payload.page_path
             recording.client_ip = client_ip or recording.client_ip
             recording.client_country = client_country or recording.client_country
-            recording.updated_at = datetime.now(timezone.utc)
+            recording.updated_at = now
 
         stopped = recording.event_count >= settings.RECORDING_MAX_EVENTS or (
             recording.chunk_count >= settings.RECORDING_MAX_CHUNKS
@@ -261,7 +271,8 @@ async def append_recording_chunk(
 
     if payload.is_final or stopped:
         recording.status = "completed"
-        recording.ended_at = datetime.now(timezone.utc)
+        recording.ended_at = now
+        recording.updated_at = now
 
     await db.flush()
     return RecordingChunkResponse(
@@ -310,6 +321,7 @@ async def list_recordings(
                 ended_at=r.ended_at,
             )
             for r in rows
+            if r.event_count > 0
         ],
     )
 
