@@ -25,6 +25,83 @@ from app.services.visitor_fraud import check_visitor_ip_fraud
 
 logger = logging.getLogger(__name__)
 
+_ACTIVE_RECORDING_WINDOW = timedelta(minutes=45)
+
+
+async def _resolve_continuable_recording(
+    db: AsyncSession,
+    *,
+    session_id: str | None,
+    recording_id: str | None,
+    client_ip: str | None,
+    now: datetime | None = None,
+) -> SessionRecording | None:
+    """
+    Prefer the richest recent trail for this visitor.
+
+    Thank-you hard reloads often mint a 1-event stub; without this, Replay opens
+    the stub instead of the product-scroll recording.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - _ACTIVE_RECORDING_WINDOW
+    candidates: list[SessionRecording] = []
+    seen: set[uuid.UUID] = set()
+
+    def _add(rec: SessionRecording | None) -> None:
+        if rec is None or rec.id in seen:
+            return
+        seen.add(rec.id)
+        candidates.append(rec)
+
+    if recording_id:
+        try:
+            rid = uuid.UUID(recording_id)
+        except ValueError:
+            rid = None
+        if rid is not None:
+            result = await db.execute(select(SessionRecording).where(SessionRecording.id == rid))
+            _add(result.scalar_one_or_none())
+
+    if session_id:
+        result = await db.execute(
+            select(SessionRecording)
+            .where(
+                SessionRecording.session_id == session_id,
+                SessionRecording.updated_at >= cutoff,
+            )
+            .order_by(SessionRecording.event_count.desc(), SessionRecording.updated_at.desc())
+            .limit(5)
+        )
+        for row in result.scalars().all():
+            _add(row)
+
+    if client_ip:
+        result = await db.execute(
+            select(SessionRecording)
+            .where(
+                SessionRecording.client_ip == client_ip,
+                SessionRecording.updated_at >= cutoff,
+            )
+            .order_by(SessionRecording.event_count.desc(), SessionRecording.updated_at.desc())
+            .limit(8)
+        )
+        for row in result.scalars().all():
+            _add(row)
+
+    if not candidates:
+        return None
+
+    best = max(
+        candidates,
+        key=lambda r: (
+            int(r.event_count or 0),
+            r.updated_at or datetime.min.replace(tzinfo=timezone.utc),
+        ),
+    )
+    if session_id:
+        best.session_id = session_id
+    return best
+
 
 async def upsert_visitor_heartbeat(
     db: AsyncSession,
@@ -148,28 +225,13 @@ async def _ensure_presence_trail(
 ) -> str:
     """Append a throttled nav tick so live visitors always have a recording row. Returns recording id."""
     now = now or datetime.now(timezone.utc)
-    result = await db.execute(
-        select(SessionRecording)
-        .where(SessionRecording.session_id == session_id)
-        .order_by(SessionRecording.started_at.desc())
-        .limit(1)
+    recording = await _resolve_continuable_recording(
+        db,
+        session_id=session_id,
+        recording_id=None,
+        client_ip=client_ip,
+        now=now,
     )
-    recording = result.scalar_one_or_none()
-
-    if recording is None and client_ip:
-        cutoff = now - timedelta(minutes=45)
-        by_ip = await db.execute(
-            select(SessionRecording)
-            .where(
-                SessionRecording.client_ip == client_ip,
-                SessionRecording.updated_at >= cutoff,
-            )
-            .order_by(SessionRecording.updated_at.desc())
-            .limit(1)
-        )
-        recording = by_ip.scalar_one_or_none()
-        if recording is not None:
-            recording.session_id = session_id
 
     if recording is None:
         recording = SessionRecording(
@@ -241,39 +303,20 @@ async def get_or_create_visitor_recording(
     """Used by admin Watch — always returns a recording for a live (or recent) session."""
     now = datetime.now(timezone.utc)
 
-    # Prefer existing recording for this session
-    result = await db.execute(
-        select(SessionRecording)
-        .where(
-            SessionRecording.session_id == session_id,
-            SessionRecording.event_count > 0,
-        )
-        .order_by(SessionRecording.started_at.desc())
-        .limit(1)
-    )
-    existing = result.scalar_one_or_none()
-    if existing is not None:
-        return await get_recording_detail(db, str(existing.id))
-
-    # Fall back to presence row (guarantees Watch works for anyone showing as live)
     presence_result = await db.execute(
         select(VisitorPresence).where(VisitorPresence.session_id == session_id)
     )
     presence = presence_result.scalar_one_or_none()
 
-    if presence is not None and presence.client_ip:
-        by_ip = await db.execute(
-            select(SessionRecording)
-            .where(
-                SessionRecording.client_ip == presence.client_ip,
-                SessionRecording.event_count > 0,
-            )
-            .order_by(SessionRecording.started_at.desc())
-            .limit(1)
-        )
-        ip_rec = by_ip.scalar_one_or_none()
-        if ip_rec is not None:
-            return await get_recording_detail(db, str(ip_rec.id))
+    existing = await _resolve_continuable_recording(
+        db,
+        session_id=session_id,
+        recording_id=None,
+        client_ip=presence.client_ip if presence else None,
+        now=now,
+    )
+    if existing is not None and existing.event_count > 0:
+        return await get_recording_detail(db, str(existing.id))
 
     recording_id = await _ensure_presence_trail(
         db,
@@ -504,15 +547,13 @@ async def append_recording_chunk(
             updated_at=now,
         )
 
-    recording: SessionRecording | None = None
-    if payload.recording_id:
-        try:
-            rid = uuid.UUID(payload.recording_id)
-        except ValueError:
-            rid = None
-        else:
-            result = await db.execute(select(SessionRecording).where(SessionRecording.id == rid))
-            recording = result.scalar_one_or_none()
+    recording = await _resolve_continuable_recording(
+        db,
+        session_id=payload.session_id,
+        recording_id=payload.recording_id,
+        client_ip=client_ip,
+        now=now,
+    )
 
     # Never create an empty recording shell — that produces "0 events" in admin.
     if not events:
@@ -525,36 +566,10 @@ async def append_recording_chunk(
                 recording_id=str(recording.id), accepted=0, stopped=True
             )
         return RecordingChunkResponse(
-            recording_id=payload.recording_id or "",
+            recording_id=payload.recording_id or (str(recording.id) if recording else ""),
             accepted=0,
             stopped=bool(payload.is_final),
         )
-
-    if recording is None:
-        result = await db.execute(
-            select(SessionRecording)
-            .where(SessionRecording.session_id == payload.session_id)
-            .order_by(SessionRecording.started_at.desc())
-            .limit(1)
-        )
-        recording = result.scalar_one_or_none()
-
-    # Continue the same visitor trail if session id changed but IP is the same (storage blocked)
-    if recording is None and client_ip:
-        cutoff = now - timedelta(minutes=45)
-        result = await db.execute(
-            select(SessionRecording)
-            .where(
-                SessionRecording.client_ip == client_ip,
-                SessionRecording.updated_at >= cutoff,
-            )
-            .order_by(SessionRecording.updated_at.desc())
-            .limit(1)
-        )
-        recording = result.scalar_one_or_none()
-        if recording is not None:
-            # Keep using this recording; also remember the latest session id
-            recording.session_id = payload.session_id
 
     if recording is None:
         recording = _new_recording()
@@ -621,17 +636,37 @@ async def list_recordings(
     if client_ip:
         filters.append(SessionRecording.client_ip == client_ip)
 
-    count_q = select(func.count()).select_from(SessionRecording).where(*filters)
-    total = int((await db.execute(count_q)).scalar_one())
-
+    # Wider fetch, then drop 1-event thank-you stubs when a richer IP sibling exists
+    fetch_limit = min(max(page * page_size * 4, page_size), 400)
     q = (
         select(SessionRecording)
         .where(*filters)
-        .order_by(SessionRecording.started_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+        .order_by(SessionRecording.event_count.desc(), SessionRecording.started_at.desc())
+        .limit(fetch_limit)
     )
-    rows = list((await db.execute(q)).scalars().all())
+    all_rows = list((await db.execute(q)).scalars().all())
+
+    richest_by_ip: dict[str, int] = {}
+    for r in all_rows:
+        if not r.client_ip:
+            continue
+        richest_by_ip[r.client_ip] = max(richest_by_ip.get(r.client_ip, 0), int(r.event_count or 0))
+
+    def _is_stub(r: SessionRecording) -> bool:
+        if int(r.event_count or 0) > 2:
+            return False
+        if not r.client_ip:
+            return False
+        return richest_by_ip.get(r.client_ip, 0) > int(r.event_count or 0)
+
+    filtered = [r for r in all_rows if not _is_stub(r)]
+    filtered.sort(
+        key=lambda r: r.started_at or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    total = len(filtered)
+    start = (page - 1) * page_size
+    rows = filtered[start : start + page_size]
 
     return RecordingsListResponse(
         total=total,
@@ -674,25 +709,61 @@ async def get_recording_detail(db: AsyncSession, recording_id: str) -> Recording
 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
+    siblings: list[SessionRecording] = [recording]
+    if recording.client_ip and recording.started_at is not None:
+        started = recording.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        window_start = started - timedelta(hours=2)
+        window_end = started + timedelta(hours=2)
+        sib_result = await db.execute(
+            select(SessionRecording)
+            .options(selectinload(SessionRecording.chunks))
+            .where(
+                SessionRecording.client_ip == recording.client_ip,
+                SessionRecording.event_count > 0,
+                SessionRecording.started_at >= window_start,
+                SessionRecording.started_at <= window_end,
+            )
+            .order_by(SessionRecording.started_at.asc())
+        )
+        found = list(sib_result.scalars().unique().all())
+        if found:
+            siblings = found
+
+    primary = max(
+        siblings,
+        key=lambda r: (
+            int(r.event_count or 0),
+            r.updated_at or r.started_at or datetime.min.replace(tzinfo=timezone.utc),
+        ),
+    )
+
     events: list[dict] = []
-    for chunk in sorted(recording.chunks, key=lambda c: c.seq):
-        try:
-            parsed = json.loads(chunk.events_json)
-            if isinstance(parsed, list):
-                events.extend(parsed)
-        except json.JSONDecodeError:
-            logger.warning("Corrupt recording chunk %s", chunk.id)
+    for sib in siblings:
+        for chunk in sorted(sib.chunks, key=lambda c: c.seq):
+            try:
+                parsed = json.loads(chunk.events_json)
+                if isinstance(parsed, list):
+                    events.extend(parsed)
+            except json.JSONDecodeError:
+                logger.warning("Corrupt recording chunk %s", chunk.id)
+
+    events.sort(key=lambda e: (e.get("t") if isinstance(e, dict) else 0) or 0)
 
     return RecordingDetailResponse(
-        id=str(recording.id),
-        session_id=recording.session_id,
-        page_path=recording.page_path,
-        client_ip=recording.client_ip,
-        client_country=recording.client_country,
-        client_user_agent=recording.client_user_agent,
-        event_count=recording.event_count,
-        status=recording.status,
-        started_at=recording.started_at,
-        ended_at=recording.ended_at,
+        id=str(primary.id),
+        session_id=primary.session_id,
+        page_path=primary.page_path,
+        client_ip=primary.client_ip,
+        client_country=primary.client_country,
+        client_user_agent=primary.client_user_agent,
+        event_count=len(events) or primary.event_count,
+        status=primary.status,
+        started_at=min(
+            (s.started_at for s in siblings if s.started_at is not None),
+            default=primary.started_at,
+        ),
+        ended_at=primary.ended_at,
         events=events,
     )
