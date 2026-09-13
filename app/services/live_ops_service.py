@@ -710,6 +710,20 @@ async def get_recording_detail(db: AsyncSession, recording_id: str) -> Recording
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     siblings: list[SessionRecording] = [recording]
+    # Same session always — thank-you hard reload must not orphan product scroll
+    by_session = await db.execute(
+        select(SessionRecording)
+        .options(selectinload(SessionRecording.chunks))
+        .where(
+            SessionRecording.session_id == recording.session_id,
+            SessionRecording.event_count > 0,
+        )
+        .order_by(SessionRecording.started_at.asc())
+    )
+    session_siblings = list(by_session.scalars().unique().all())
+    if session_siblings:
+        siblings = session_siblings
+
     if recording.client_ip and recording.started_at is not None:
         started = recording.started_at
         if started.tzinfo is None:
@@ -729,7 +743,13 @@ async def get_recording_detail(db: AsyncSession, recording_id: str) -> Recording
         )
         found = list(sib_result.scalars().unique().all())
         if found:
-            siblings = found
+            by_id = {s.id: s for s in siblings}
+            for s in found:
+                by_id[s.id] = s
+            siblings = sorted(
+                by_id.values(),
+                key=lambda r: r.started_at or datetime.min.replace(tzinfo=timezone.utc),
+            )
 
     primary = max(
         siblings,
