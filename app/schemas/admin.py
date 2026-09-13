@@ -91,6 +91,11 @@ class AdminPurgeDataResponse(BaseModel):
     deleted: dict[str, int]
 
 
+class AdminOrderDeleteResponse(BaseModel):
+    ok: bool = True
+    order_id: str
+
+
 class AdminOrderDetailResponse(BaseModel):
     ok: bool = True
     order_id: str

@@ -20,6 +20,7 @@ from app.schemas.admin import (
     AdminChannelRevenueItem,
     AdminDailyTrendItem,
     AdminMetricsResponse,
+    AdminOrderDeleteResponse,
     AdminOrderDetailResponse,
     AdminOrderItem,
     AdminOrderListItem,
@@ -383,3 +384,14 @@ async def get_admin_order_detail(db: AsyncSession, order_id: str) -> AdminOrderD
             for item in order.items
         ],
     )
+
+
+async def delete_admin_order(db: AsyncSession, order_id: str) -> AdminOrderDeleteResponse:
+    result = await db.execute(select(Order).where(Order.order_number == order_id))
+    order = result.scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    await db.delete(order)
+    await db.flush()
+    return AdminOrderDeleteResponse(order_id=order_id)

@@ -11,6 +11,7 @@ from app.schemas.admin import (
     AdminLoginRequest,
     AdminLoginResponse,
     AdminMetricsResponse,
+    AdminOrderDeleteResponse,
     AdminOrderDetailResponse,
     AdminOrdersListResponse,
     AdminPurgeDataResponse,
@@ -26,6 +27,7 @@ from app.schemas.live_ops import (
 )
 from app.services.admin_auth import TOKEN_TTL_SECONDS, authenticate_admin, verify_admin_token
 from app.services.admin_service import (
+    delete_admin_order,
     get_admin_metrics,
     get_admin_order_detail,
     list_admin_orders,
@@ -103,6 +105,15 @@ async def admin_order_detail(
     db: AsyncSession = Depends(get_db),
 ) -> AdminOrderDetailResponse:
     return await get_admin_order_detail(db, order_id)
+
+
+@router.delete("/orders/{order_id}", response_model=AdminOrderDeleteResponse)
+async def admin_order_delete(
+    order_id: str,
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+) -> AdminOrderDeleteResponse:
+    return await delete_admin_order(db, order_id)
 
 
 @router.get("/visitors/live", response_model=LiveVisitorsResponse)
