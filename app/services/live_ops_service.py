@@ -361,7 +361,7 @@ async def _recording_index_for(
         result = await db.execute(
             select(SessionRecording)
             .where(*filters)
-            .order_by(SessionRecording.started_at.desc())
+            .order_by(SessionRecording.event_count.desc(), SessionRecording.updated_at.desc())
             .limit(500)
         )
         for rec in result.scalars().all():
