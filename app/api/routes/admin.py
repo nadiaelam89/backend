@@ -20,6 +20,7 @@ from app.schemas.live_ops import (
     LiveVisitorsResponse,
     RecordingDetailResponse,
     RecordingsListResponse,
+    VisitorHistoryResponse,
     WhatsAppConversationsResponse,
     WhatsAppMessagesResponse,
     WhatsAppReplyRequest,
@@ -38,6 +39,7 @@ from app.services.live_ops_service import (
     get_recording_detail,
     list_live_visitors,
     list_recordings,
+    list_visitor_history,
 )
 from app.services.whatsapp_service import (
     get_conversation_messages,
@@ -124,13 +126,28 @@ async def admin_live_visitors(
     return await list_live_visitors(db)
 
 
+@router.get("/visitors/history", response_model=VisitorHistoryResponse)
+async def admin_visitor_history(
+    _: Annotated[str, Depends(require_admin)],
+    db: AsyncSession = Depends(get_db),
+    date: str = Query(..., description="Calendar day YYYY-MM-DD (Asia/Riyadh)"),
+) -> VisitorHistoryResponse:
+    """Daily visitor log — country, IP, timestamps for the selected day."""
+    try:
+        return await list_visitor_history(db, date)
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/visitors/{session_id}/recording", response_model=RecordingDetailResponse)
 async def admin_visitor_recording(
     session_id: str,
     _: Annotated[str, Depends(require_admin)],
     db: AsyncSession = Depends(get_db),
 ) -> RecordingDetailResponse:
-    """Watch a live visitor — finds or creates their session trail immediately."""
+    """Legacy watch endpoint — kept for API compatibility."""
     return await get_or_create_visitor_recording(db, session_id)
 
 

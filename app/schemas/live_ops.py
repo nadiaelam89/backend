@@ -61,6 +61,23 @@ class LiveVisitorsResponse(BaseModel):
     visitors: list[LiveVisitorItem]
 
 
+class VisitorHistoryItem(BaseModel):
+    session_id: str
+    page_path: str | None
+    client_ip: str | None
+    client_country: str | None
+    is_valid_traffic: bool
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class VisitorHistoryResponse(BaseModel):
+    ok: bool = True
+    date: str
+    total: int
+    visitors: list[VisitorHistoryItem]
+
+
 class RecordingListItem(BaseModel):
     id: str
     session_id: str

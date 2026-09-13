@@ -20,6 +20,8 @@ from app.schemas.live_ops import (
     RecordingDetailResponse,
     RecordingListItem,
     RecordingsListResponse,
+    VisitorHistoryItem,
+    VisitorHistoryResponse,
 )
 from app.services.visitor_fraud import check_visitor_ip_fraud
 
@@ -521,6 +523,68 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
         )
 
     return LiveVisitorsResponse(live_count=len(visitors), visitors=visitors)
+
+
+async def list_visitor_history(db: AsyncSession, day: str) -> VisitorHistoryResponse:
+    """List visitors seen on a calendar day (Asia/Riyadh). Format: YYYY-MM-DD."""
+    from datetime import date as date_cls, time
+    from zoneinfo import ZoneInfo
+
+    try:
+        parsed = date_cls.fromisoformat(day.strip())
+    except ValueError as exc:
+        raise ValueError("Invalid date — use YYYY-MM-DD") from exc
+
+    tz = ZoneInfo("Asia/Riyadh")
+    start = datetime.combine(parsed, time.min, tzinfo=tz)
+    end = start + timedelta(days=1)
+
+    result = await db.execute(
+        select(VisitorPresence)
+        .where(
+            VisitorPresence.last_seen_at >= start,
+            VisitorPresence.last_seen_at < end,
+        )
+        .order_by(VisitorPresence.last_seen_at.desc())
+        .limit(2000)
+    )
+    rows = list(result.scalars().all())
+
+    # Also include anyone who first arrived that day (even if last_seen later)
+    if True:
+        first_day = await db.execute(
+            select(VisitorPresence)
+            .where(
+                VisitorPresence.first_seen_at >= start,
+                VisitorPresence.first_seen_at < end,
+            )
+            .order_by(VisitorPresence.first_seen_at.desc())
+            .limit(2000)
+        )
+        seen_ids = {r.session_id for r in rows}
+        for r in first_day.scalars().all():
+            if r.session_id not in seen_ids:
+                rows.append(r)
+                seen_ids.add(r.session_id)
+
+    rows.sort(
+        key=lambda r: r.last_seen_at or r.first_seen_at or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+
+    visitors = [
+        VisitorHistoryItem(
+            session_id=r.session_id,
+            page_path=r.page_path,
+            client_ip=r.client_ip,
+            client_country=r.client_country,
+            is_valid_traffic=bool(r.is_valid_traffic),
+            first_seen_at=r.first_seen_at,
+            last_seen_at=r.last_seen_at,
+        )
+        for r in rows
+    ]
+    return VisitorHistoryResponse(date=parsed.isoformat(), total=len(visitors), visitors=visitors)
 
 
 async def append_recording_chunk(
