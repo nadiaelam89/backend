@@ -526,7 +526,7 @@ async def list_live_visitors(db: AsyncSession) -> LiveVisitorsResponse:
 
 
 async def list_visitor_history(db: AsyncSession, day: str) -> VisitorHistoryResponse:
-    """List visitors seen on a calendar day (Asia/Riyadh). Format: YYYY-MM-DD."""
+    """List visitors seen on a calendar day (Europe/Rome). Format: YYYY-MM-DD."""
     from datetime import date as date_cls, time
     from zoneinfo import ZoneInfo
 
@@ -535,7 +535,7 @@ async def list_visitor_history(db: AsyncSession, day: str) -> VisitorHistoryResp
     except ValueError as exc:
         raise ValueError("Invalid date — use YYYY-MM-DD") from exc
 
-    tz = ZoneInfo("Asia/Riyadh")
+    tz = ZoneInfo("Europe/Rome")
     start = datetime.combine(parsed, time.min, tzinfo=tz)
     end = start + timedelta(days=1)
 
@@ -551,21 +551,20 @@ async def list_visitor_history(db: AsyncSession, day: str) -> VisitorHistoryResp
     rows = list(result.scalars().all())
 
     # Also include anyone who first arrived that day (even if last_seen later)
-    if True:
-        first_day = await db.execute(
-            select(VisitorPresence)
-            .where(
-                VisitorPresence.first_seen_at >= start,
-                VisitorPresence.first_seen_at < end,
-            )
-            .order_by(VisitorPresence.first_seen_at.desc())
-            .limit(2000)
+    first_day = await db.execute(
+        select(VisitorPresence)
+        .where(
+            VisitorPresence.first_seen_at >= start,
+            VisitorPresence.first_seen_at < end,
         )
-        seen_ids = {r.session_id for r in rows}
-        for r in first_day.scalars().all():
-            if r.session_id not in seen_ids:
-                rows.append(r)
-                seen_ids.add(r.session_id)
+        .order_by(VisitorPresence.first_seen_at.desc())
+        .limit(2000)
+    )
+    seen_ids = {r.session_id for r in rows}
+    for r in first_day.scalars().all():
+        if r.session_id not in seen_ids:
+            rows.append(r)
+            seen_ids.add(r.session_id)
 
     rows.sort(
         key=lambda r: r.last_seen_at or r.first_seen_at or datetime.min.replace(tzinfo=timezone.utc),

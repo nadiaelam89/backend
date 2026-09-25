@@ -130,7 +130,7 @@ async def admin_live_visitors(
 async def admin_visitor_history(
     _: Annotated[str, Depends(require_admin)],
     db: AsyncSession = Depends(get_db),
-    date: str = Query(..., description="Calendar day YYYY-MM-DD (Asia/Riyadh)"),
+    date: str = Query(..., description="Calendar day YYYY-MM-DD (Europe/Rome)"),
 ) -> VisitorHistoryResponse:
     """Daily visitor log — country, IP, timestamps for the selected day."""
     try:
