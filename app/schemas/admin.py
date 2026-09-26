@@ -45,6 +45,7 @@ class AdminMetricsResponse(BaseModel):
     average_pieces_per_order: float
     conversion_rate: float
     checkout_conversion_rate: float
+    checkout_reach_rate: float = 0.0
     unique_sessions: int
     blocked_events: int
     valid_events: int

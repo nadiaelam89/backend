@@ -81,6 +81,25 @@ async def _count_unique_sessions(
     return int(result.scalar_one())
 
 
+async def _count_unique_event_sessions(
+    db: AsyncSession,
+    event_name: str,
+    start: datetime,
+    end: datetime,
+) -> int:
+    result = await db.execute(
+        select(func.count(func.distinct(SiteEvent.session_id)))
+        .select_from(SiteEvent)
+        .where(
+            SiteEvent.event_name == event_name,
+            SiteEvent.is_valid_traffic.is_(True),
+            SiteEvent.created_at >= start,
+            SiteEvent.created_at <= end,
+        )
+    )
+    return int(result.scalar_one())
+
+
 async def purge_all_data(db: AsyncSession) -> dict[str, int]:
     """Delete all orders and tracking events. Irreversible."""
     deleted: dict[str, int] = {}
@@ -109,7 +128,8 @@ async def get_admin_metrics(
     page_views = await _count_valid_events(db, "PageView", start, end)
     product_views = await _count_valid_events(db, "ViewContent", start, end)
     add_to_carts = await _count_valid_events(db, "AddToCart", start, end)
-    initiate_checkouts = await _count_valid_events(db, "InitiateCheckout", start, end)
+    initiate_checkouts = await _count_unique_event_sessions(db, "InitiateCheckout", start, end)
+    product_view_sessions = await _count_unique_event_sessions(db, "ViewContent", start, end)
     unique_sessions = await _count_unique_sessions(db, start, end)
 
     blocked_result = await db.execute(
@@ -246,6 +266,9 @@ async def get_admin_metrics(
     checkout_conversion_rate = (
         round((orders_count / initiate_checkouts) * 100, 2) if initiate_checkouts else 0.0
     )
+    checkout_reach_rate = (
+        round((initiate_checkouts / product_view_sessions) * 100, 2) if product_view_sessions else 0.0
+    )
     average_order_value = round(revenue_sar / orders_count, 2) if orders_count else 0.0
 
     return AdminMetricsResponse(
@@ -263,6 +286,7 @@ async def get_admin_metrics(
         average_pieces_per_order=average_pieces,
         conversion_rate=conversion_rate,
         checkout_conversion_rate=checkout_conversion_rate,
+        checkout_reach_rate=checkout_reach_rate,
         unique_sessions=unique_sessions,
         blocked_events=blocked_events,
         valid_events=valid_events,
